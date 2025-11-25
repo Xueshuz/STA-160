@@ -161,7 +161,7 @@ var fireLayer = L.geoJSON(null, {
 var allFireData;   // full dataset for filtering
 
 // Load fire points
-fetch("fires_recent.geojson")
+fetch("fires_full.geojson")
   .then(r => r.json())
   .then(data => {
     // 1) 从 date 中直接截取前 4 位作为年份
