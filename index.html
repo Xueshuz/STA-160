@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Wildfire Risk Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+4Jg1gj0KGFF2VHtLt6wHxZ34qkLJGeC2o9gXa1uU="
+    crossorigin=""
+  />
+
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    .legend {
+      background: white;
+      padding: 10px;
+      border-radius: 4px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      line-height: 1.4em;
+      font-family: sans-serif;
+      font-size: 13px;
+    }
+
+    .legend i {
+      width: 14px;
+      height: 14px;
+      float: left;
+      margin-right: 6px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-o9N1j7kGStbG3o7mG8+EJ2N1n00p1r6tAEFwA6C4F6A="
+  crossorigin="">
+</script>
+
+<script>
+  // ---------- 1. 初始化地图 ----------
+  var map = L.map('map').setView([39.5, -98.35], 4); // 中心放美国
+
+  // 底图：可以选 OSM / Satellite 等
+  var osm = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }
+  ).addTo(map);
+
+  var topo = L.tileLayer(
+    'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    {
+      maxZoom: 17,
+      attribution: '&copy; OpenTopoMap, &copy; OpenStreetMap contributors'
+    }
+  );
+
+  var baseLayers = {
+    "OpenStreetMap": osm,
+    "Topo": topo
+  };
+
+  // ---------- 2. 风险图层（黄色大区域） ----------
+  var riskColors = {
+    "Very High": "#b10026",
+    "High": "#fd8d3c",
+    "Moderate": "#fecc5c",
+    "Low": "#ffffb2"
+  };
+
+  function styleRisk(feature) {
+    var lvl = feature.properties.risk_level;
+    return {
+      color: "#555",
+      weight: 0.3,
+      fillColor: riskColors[lvl] || "#cccccc",
+      fillOpacity: 0.5
+    };
+  }
+
+  var riskLayer = L.geoJSON(null, {
+    style: styleRisk,
+    onEachFeature: function (feature, layer) {
+      var p = feature.properties;
+      var html = "<b>Risk level:</b> " + p.risk_level +
+                 "<br><b>Fire days:</b> " + p.n_fire +
+                 "<br><b>Total days:</b> " + p.n_obs +
+                 "<br><b>Fire rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%";
+      layer.bindPopup(html);
+    }
+  });
+
+  fetch("risk_zones.geojson")
+    .then(function(response) { return response.json(); })
+    .then(function(data) { riskLayer.addTo(map); });
+
+
+  // ---------- 3. 最近火点图层（小火苗图标） ----------
+  // 你可以自己放一个小图标 fire-icon.png 到同一目录
+  var fireIcon = L.icon({
+    iconUrl: "https://cdn-icons-png.flaticon.com/512/482/482988.png", // 或者换成本地文件 fire-icon.png
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+  });
+
+  var firesLayer = L.geoJSON(null, {
+    pointToLayer: function (feature, latlng) {
+      return L.marker(latlng, {icon: fireIcon});
+    },
+    onEachFeature: function (feature, layer) {
+      var p = feature.properties;
+      var html = "<b>Date:</b> " + p.date +
+                 "<br><b>Region:</b> " + p.region +
+                 "<br><b>Season:</b> " + p.season +
+                 "<br><b>Tmax (°C):</b> " + p.tmmx_c.toFixed(1) +
+                 "<br><b>VPD:</b> " + p.vpd.toFixed(2);
+      layer.bindPopup(html);
+    }
+  });
+
+  fetch("fires_recent.geojson")
+    .then(function(response) { return response.json(); })
+    .then(function(data) { firesLayer.addData(data); });
+
+
+  // ---------- 4. 图层控制（像 CAL FIRE 下方那一排） ----------
+  var overlayLayers = {
+    "Risk Zones": riskLayer,
+    "Recent Fires": firesLayer
+  };
+
+  L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
+
+  // ---------- 5. 图例 ----------
+  var legend = L.control({position: 'bottomright'});
+
+  legend.onAdd = function (map) {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML += "<b>Wildfire Risk</b><br>";
+    var levels = ["Very High", "High", "Moderate", "Low"];
+    levels.forEach(function (lvl) {
+      div.innerHTML +=
+        '<i style="background:' + (riskColors[lvl] || '#ccc') + '"></i> ' +
+        lvl + "<br>";
+    });
+    return div;
+  };
+
+  legend.addTo(map);
+
+</script>
+</body>
+</html>
