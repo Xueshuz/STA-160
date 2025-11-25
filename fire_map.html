@@ -1,82 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Wildfire Multi-Metric Explorer</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <title>Wildfire Explorer — Multi-Metric Version</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-<style>
-  html, body { height: 100%; margin: 0; padding: 0; font-family: Arial; }
-  #map { width: 100%; height: 100%; }
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
 
-  /* Year dropdown */
-  #yearFilter {
-    position: absolute;
-    top: 20px;
-    left: 70px;
-    z-index: 99999;
-    padding: 5px 10px;
-    width: 130px;
-    background: white;
-    border: 2px solid #333;
-    border-radius: 6px;
-  }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
 
-  /* Left filter panel */
-  #filterBar {
-    position: absolute;
-    top: 80px;
-    left: 20px;
-    width: 320px;
-    background: white;
-    padding: 15px;
-    z-index: 9999;
-    border-radius: 10px;
-    box-shadow: 0 0 8px rgba(0,0,0,0.25);
-  }
+    /* Year Dropdown */
+    #yearFilter {
+      position: absolute !important;
+      top: 20px !important;
+      left: 70px !important;
 
-  .metric-block {
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    margin-bottom: 10px;
-  }
+      width: 140px !important;
+      max-width: 140px !important;
+      min-width: 140px !important;
 
-  label { font-weight: bold; }
-  .metric-title { font-weight: bold; margin-bottom: 5px; }
+      display: inline-block !important;
+      box-sizing: border-box !important;
 
-  input[type="range"] {
-    width: 100%;
-  }
+      z-index: 999999 !important;
 
-  .legend {
-    background: white;
-    padding: 10px;
-    border-radius: 6px;
-    box-shadow: 0 0 6px rgba(0,0,0,0.3);
-    font-size: 12px;
-  }
-  .legend i {
-    width: 16px;
-    height: 16px;
-    float: left;
-    margin-right: 6px;
-    opacity: 0.8;
-  }
-</style>
+      padding: 5px 10px !important;
+      background: white !important;
+      border: 2px solid #333 !important;
+      border-radius: 6px !important;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3) !important;
+    }
 
+    /* Left Filter Panel */
+    #filterBar {
+      position: absolute;
+      top: 80px;
+      left: 20px;
+      width: 310px;
+      background: white;
+      padding: 15px;
+      z-index: 9999;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+
+    .metric-block {
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+    }
+
+    select, input[type="range"], button {
+      width: 100%;
+      margin-top: 6px;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid #aaa;
+      font-size: 13px;
+    }
+
+    #rangeText {
+      margin-top: 4px;
+      font-size: 13px;
+    }
+
+    #resetBtn {
+      margin-top: 10px;
+      background: #0f7b88;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+    #resetBtn:hover {
+      background: #0a5660;
+    }
+
+    #noDataMsg {
+      display: none;
+      color: #c00;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    /* Histogram Section */
+    #histContainer {
+      margin-top: 12px;
+    }
+
+    #histogram {
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fafafa;
+    }
+
+    #histDescription {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #444;
+      font-style: italic;
+    }
+
+    /* Legend */
+    .legend {
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-size: 12px;
+      line-height: 18px;
+    }
+    .legend i {
+      width: 16px;
+      height: 16px;
+      float: left;
+      margin-right: 6px;
+      opacity: 0.8;
+    }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100000;
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
+    .loading-overlay.hidden {
+      display: none;
+    }
+  </style>
 </head>
 
-<body>
+  <body>
 
-<!-- Year selector -->
+<!-- 年份选择 -->
 <select id="yearFilter">
   <option value="all">All Years</option>
 </select>
 
-<!-- Left filter panel -->
+<!-- 左侧过滤面板 -->
 <div id="filterBar">
 
   <label>Region</label>
@@ -84,114 +171,82 @@
     <option value="all">All regions</option>
   </select>
 
-  <hr>
+  <hr style="margin: 12px 0;">
 
-  <h3>Metric Filters</h3>
+  <h3 style="margin: 0 0 10px 0;">Metric Filters</h3>
+
+  <!-- 动态生成 metric 过滤组件 -->
   <div id="metricContainer"></div>
+
+  <!-- 如果筛选后没有点 -->
+  <div id="noDataMsg">No fires match the current filters.</div>
+
+  <!-- Reset 按钮 -->
+  <button id="resetBtn" type="button">Reset filters</button>
+
+  <!-- Histogram -->
+  <div id="histContainer">
+    <label style="margin-top:12px;">Distribution</label>
+    <canvas id="histogram" width="240" height="80"></canvas>
+    <div id="histDescription">
+      Histogram shows the distribution of the <b>first enabled metric</b>
+      among the currently filtered wildfire points.
+    </div>
+  </div>
 
 </div>
 
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="loading-overlay">
+  Loading wildfire data...
+</div>
+
+<!-- 地图容器 -->
 <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-/* ===================================================
-   1. Initialize map
-=================================================== */
-var map = L.map("map").setView([39.5, -98.35], 4);
 
-var osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 18
-}).addTo(map);
-
-var riskLayer = L.geoJSON(null);
-var fireLayer = L.geoJSON(null);
-
-
-/* ===================================================
-   2. Load datasets
-=================================================== */
-let allFireData = null;
-
-fetch("risk_zones.geojson")
-  .then(r => r.json())
-  .then(data => riskLayer.addData(data));
-
-fetch("fires_full.geojson")
-  .then(r => r.json())
-  .then(data => {
-    allFireData = data;
-
-    /* Extract years */
-    data.features.forEach(f => {
-      f.properties.year = String(f.properties.date).slice(0,4);
-    });
-
-    /* Fill year dropdown */
-    let years = [...new Set(data.features.map(f => f.properties.year))].sort();
-    const yearSel = document.getElementById("yearFilter");
-    years.forEach(y => {
-      let o=document.createElement("option");
-      o.value = y;
-      o.textContent = y;
-      yearSel.appendChild(o);
-    });
-
-    /* Fill regions */
-    let regions = [...new Set(data.features.map(f=>f.properties.region))].sort();
-    const regSel = document.getElementById("regionSelect");
-    regions.forEach(r=>{
-      if(!r) return;
-      let o=document.createElement("option");
-      o.value = r;
-      o.textContent = r;
-      regSel.appendChild(o);
-    });
-
-    buildMetricFilters(data);
-    applyFilters();
-  });
-
-
-/* ===================================================
-   3. Define metric list (all except year)
-=================================================== */
+// ======================================================
+// Metric 配置：名称 & 显示名称
+// ======================================================
 const metricList = {
-  "tmmx_c": "Max Temperature (°C)",
-  "tmnn_c": "Min Temperature (°C)",
-  "vpd": "VPD",
-  "sph": "Specific Humidity",
-  "srad": "Solar Radiation",
-  "fm100": "Fuel Moisture 100h",
-  "fm1000": "Fuel Moisture 1000h",
-  "latitude": "Latitude",
-  "longitude": "Longitude",
-  "month": "Month"
+  tmmx_c: "Max Temperature (°C)",
+  vpd: "Vapor Pressure Deficit (VPD)",
+  sph: "Specific Humidity",
+  srad: "Solar Radiation",
+  fm100: "Fuel Moisture 100h",
+  fm1000: "Fuel Moisture 1000h"
 };
 
+// 全局保存每个 metric 的状态
+let metricEnabled = {};   // {tmmx_c: true/false}
+let metricMin = {};       // 当前 slider 的 min 值
+let metricMax = {};       // 当前 slider 的 max 值
+let metricRange = {};     // 数据集中的真实最小/最大
 
-/* ===================================================
-   4. Build dynamic sliders for each metric
-=================================================== */
-let metricRanges = {};       // store min/max
-let metricEnabled = {};      // store checkbox
-let metricMin = {};
-let metricMax = {};
-
+// ======================================================
+// 生成 Metric Filter UI
+// ======================================================
 function buildMetricFilters(data) {
   const container = document.getElementById("metricContainer");
+  container.innerHTML = "";   // 清空旧内容
 
   Object.keys(metricList).forEach(metric => {
-    let vals = data.features.map(f => parseFloat(f.properties[metric]));
-    let min = Math.min(...vals);
-    let max = Math.max(...vals);
 
-    metricRanges[metric] = {min, max};
-    metricEnabled[metric] = false;
+    // 取这个 metric 的值列表
+    const values = data.features
+      .map(f => parseFloat(f.properties[metric]))
+      .filter(v => !isNaN(v));
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    metricRange[metric] = { min, max };
     metricMin[metric] = min;
     metricMax[metric] = max;
+    metricEnabled[metric] = false;   // 初始关闭
 
+    // ★ 动态生成 UI block
     const block = document.createElement("div");
     block.className = "metric-block";
 
@@ -200,57 +255,96 @@ function buildMetricFilters(data) {
         <input type="checkbox" id="chk_${metric}">
         ${metricList[metric]}
       </label>
-      <div id="txt_${metric}" style="font-size:13px; margin:4px 0;">
+
+      <div id="txt_${metric}" style="font-size:12px; margin:4px 0;">
         ${min.toFixed(2)} – ${max.toFixed(2)}
       </div>
 
-      <input type="range" id="min_${metric}" min="${min}" max="${max}" step="0.1" value="${min}">
-      <input type="range" id="max_${metric}" min="${min}" max="${max}" step="0.1" value="${max}">
+      <input type="range"
+             id="min_${metric}"
+             min="${min}" max="${max}" step="0.1" value="${min}">
+
+      <input type="range"
+             id="max_${metric}"
+             min="${min}" max="${max}" step="0.1" value="${max}">
     `;
+
     container.appendChild(block);
 
-    /* bind listeners */
-    document.getElementById("chk_"+metric).addEventListener("change", e=>{
+    // === 绑定 checkbox ===
+    document.getElementById(`chk_${metric}`).addEventListener("change", (e) => {
       metricEnabled[metric] = e.target.checked;
-      applyFilters();
+      applyFilters();   // 更新地图
+      updateHistogram();   // 更新 histogram
     });
-    document.getElementById("min_"+metric).addEventListener("input", e=>{
-      metricMin[metric] = parseFloat(e.target.value);
-      document.getElementById("txt_"+metric).textContent =
+
+    // === 绑定 min slider ===
+    document.getElementById(`min_${metric}`).addEventListener("input", (e) => {
+      const v = parseFloat(e.target.value);
+      metricMin[metric] = v;
+
+      // 防止 min > max
+      if (v > metricMax[metric]) {
+        metricMax[metric] = v;
+        document.getElementById(`max_${metric}`).value = v;
+      }
+
+      document.getElementById(`txt_${metric}`).textContent =
         `${metricMin[metric].toFixed(2)} – ${metricMax[metric].toFixed(2)}`;
+
       applyFilters();
+      updateHistogram();
     });
-    document.getElementById("max_"+metric).addEventListener("input", e=>{
-      metricMax[metric] = parseFloat(e.target.value);
-      document.getElementById("txt_"+metric).textContent =
+
+    // === 绑定 max slider ===
+    document.getElementById(`max_${metric}`).addEventListener("input", (e) => {
+      const v = parseFloat(e.target.value);
+      metricMax[metric] = v;
+
+      // 防止 max < min
+      if (v < metricMin[metric]) {
+        metricMin[metric] = v;
+        document.getElementById(`min_${metric}`).value = v;
+      }
+
+      document.getElementById(`txt_${metric}`).textContent =
         `${metricMin[metric].toFixed(2)} – ${metricMax[metric].toFixed(2)}`;
+
       applyFilters();
+      updateHistogram();
     });
   });
 }
 
+</script>
 
-/* ===================================================
-   5. Filtering logic
-=================================================== */
+    <script>
+
+// ======================================================
+// applyFilters()  —— 多 metric + 年份 + 区域 筛选
+// ======================================================
 function applyFilters() {
   if (!allFireData) return;
 
-  const yr = document.getElementById("yearFilter").value;
-  const region = document.getElementById("regionSelect").value;
+  const selectedYear = document.getElementById("yearFilter").value;
+  const selectedRegion = document.getElementById("regionSelect").value;
 
-  let filtered = {
+  const filtered = {
     type: "FeatureCollection",
     features: allFireData.features.filter(f => {
-      let p = f.properties;
+      const p = f.properties;
 
-      if (yr !== "all" && p.year !== yr) return false;
-      if (region !== "all" && p.region !== region) return false;
+      // 年份过滤
+      if (selectedYear !== "all" && p.year !== selectedYear) return false;
 
-      /* multi-metric filtering */
-      for (let m of Object.keys(metricList)) {
+      // 区域过滤
+      if (selectedRegion !== "all" && p.region !== selectedRegion) return false;
+
+      // 多 metric filtering —— AND 条件
+      for (const m of Object.keys(metricList)) {
         if (metricEnabled[m]) {
-          let v = parseFloat(p[m]);
+          const v = parseFloat(p[m]);
+          if (isNaN(v)) return false;
           if (v < metricMin[m] || v > metricMax[m]) return false;
         }
       }
@@ -259,34 +353,321 @@ function applyFilters() {
     })
   };
 
+  const noDataMsg = document.getElementById("noDataMsg");
+  if (filtered.features.length === 0) {
+    noDataMsg.style.display = "block";
+  } else {
+    noDataMsg.style.display = "none";
+  }
+
   fireLayer.clearLayers();
   fireLayer.addData(filtered);
+
+  autoZoom(filtered);
+  updateHistogram(filtered);
 }
 
+// ======================================================
+// 自动缩放视图到当前 filtered 数据
+// ======================================================
+function autoZoom(filtered) {
+  if (!filtered.features.length) {
+    // 没数据恢复默认
+    map.setView([39.5, -98.35], 4);
+    return;
+  }
 
-/* ===================================================
-   6. Event listeners
-=================================================== */
-document.getElementById("yearFilter").addEventListener("change", applyFilters);
-document.getElementById("regionSelect").addEventListener("change", applyFilters);
+  const coords = [];
 
+  filtered.features.forEach(f => {
+    if (!f.geometry || f.geometry.type !== "Point") return;
+    const c = f.geometry.coordinates;
+    coords.push([c[1], c[0]]);
+  });
 
-/* ===================================================
-   7. Layer control & legend
-=================================================== */
-L.control.layers(
-  {"OpenStreetMap":osm},
-  {"Risk Zones":riskLayer,"Fire Locations":fireLayer},
-  {collapsed:false}
-).addTo(map);
+  if (!coords.length) {
+    map.setView([39.5, -98.35], 4);
+    return;
+  }
 
-var legend = L.control({position:"bottomright"});
-legend.onAdd = function(){
-  let div=L.DomUtil.create("div","legend");
-  div.innerHTML="<b>Risk Levels</b><br>";
-  return div;
+  const bounds = L.latLngBounds(coords);
+  map.fitBounds(bounds.pad(0.2));
 }
-legend.addTo(map);
+
+// ======================================================
+// Histogram (显示第一个启用的 metric)
+// ======================================================
+function updateHistogram(filtered) {
+  let features =
+    filtered && filtered.features.length > 0
+      ? filtered.features
+      : allFireData.features;
+
+  // 清空画布
+  const ctx = histCtx;
+  ctx.clearRect(0, 0, histCanvas.width, histCanvas.height);
+
+  if (!features || !features.length) return;
+
+  // 找第一个启用的 metric
+  const activeMetrics = Object.keys(metricList).filter(m => metricEnabled[m]);
+
+  let targetMetric = null;
+
+  if (activeMetrics.length > 0) {
+    targetMetric = activeMetrics[0]; // 第一个启用 metric
+  } else {
+    // 如果没有启用 metric，默认显示第一个 metric（例如 tmmx_c）
+    targetMetric = Object.keys(metricList)[0];
+  }
+
+  // 更新描述文字
+  document.getElementById("histDescription").innerHTML =
+    `Histogram shows distribution of <b>${metricList[targetMetric]}</b>.`;
+
+  const values = features
+    .map(f => parseFloat(f.properties[targetMetric]))
+    .filter(v => !isNaN(v));
+
+  if (!values.length) return;
+
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const bins = 10;
+  const binCounts = new Array(bins).fill(0);
+  const step = (maxV - minV) / bins || 1;
+
+  // 统计数量
+  values.forEach(v => {
+    let idx = Math.floor((v - minV) / step);
+    if (idx < 0) idx = 0;
+    if (idx >= bins) idx = bins - 1;
+    binCounts[idx]++;
+  });
+
+  const w = histCanvas.width;
+  const h = histCanvas.height;
+  const barW = w / bins;
+  const maxCount = Math.max(...binCounts);
+
+  ctx.fillStyle = "#0f7b88";
+
+  binCounts.forEach((count, i) => {
+    const barH = maxCount ? (count / maxCount) * (h - 8) : 0;
+    ctx.fillRect(i * barW + 1, h - barH, barW - 2, barH);
+  });
+}
+
+</script>
+
+ <script>
+
+// ======================================================
+// 加载 Wildfire 数据（fires_full.geojson）
+// ======================================================
+function loadWildfireData() {
+  setLoading(true);
+
+  fetch("fires_full.geojson")
+    .then(r => r.json())
+    .then(data => {
+      allFireData = data;
+
+      // 提取 year
+      allFireData.features.forEach(f => {
+        const d = String(f.properties.date || "");
+        f.properties.year = d.slice(0, 4);
+      });
+
+      // ----------------------------
+      // 构建 Year 下拉菜单
+      // ----------------------------
+      const years = [...new Set(
+        allFireData.features.map(f => f.properties.year)
+      )].sort();
+
+      const yearSelect = document.getElementById("yearFilter");
+      years.forEach(y => {
+        const opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+      });
+
+      // ----------------------------
+      // 构建 Region 下拉菜单
+      // ----------------------------
+      const regions = [...new Set(
+        allFireData.features.map(f => f.properties.region)
+      )].sort();
+
+      const regionSelect = document.getElementById("regionSelect");
+      regions.forEach(r => {
+        if (!r) return;
+        const opt = document.createElement("option");
+        opt.value = r;
+        opt.textContent = r;
+        regionSelect.appendChild(opt);
+      });
+
+      // ----------------------------
+      // 创建多 metric filter UI（Block 3）
+      // ----------------------------
+      buildMetricFilters(allFireData);
+
+      // ----------------------------
+      // 初次渲染：显示所有 wildfire 点
+      // ----------------------------
+      applyFilters();
+      updateHistogram();
+
+      setLoading(false);
+    })
+    .catch(err => {
+      console.error("Error loading wildfire data:", err);
+      setLoading(false);
+    });
+}
+
+// 调用加载函数
+loadWildfireData();
+
+</script>
+
+    <script>
+
+// ======================================================
+// 地图初始化
+// ======================================================
+map = L.map("map").setView([39.5, -98.35], 4);
+
+const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17,
+  attribution: "&copy; OpenTopoMap contributors"
+});
+
+const baseLayers = {
+  "OpenStreetMap": osmLayer,
+  "Topo Map": topoLayer
+};
+
+// ======================================================
+// Risk Zones Layer
+// ======================================================
+const riskColors = {
+  "Very High": "#b10026",
+  "High":      "#fd8d3c",
+  "Moderate":  "#fecc5c",
+  "Low":       "#ffffb2"
+};
+
+function styleRisk(feature) {
+  return {
+    color: "#333",
+    weight: 0.5,
+    fillColor: riskColors[feature.properties.risk_level] || "#ccc",
+    fillOpacity: 0.6
+  };
+}
+
+riskLayer = L.geoJSON(null, {
+  style: styleRisk,
+  onEachFeature: (feature, layer) => {
+    const p = feature.properties;
+    layer.bindPopup(`
+      <b>Risk:</b> ${p.risk_level}<br>
+      <b>Fire Days:</b> ${p.n_fire}<br>
+      <b>Total Days:</b> ${p.n_obs}<br>
+      <b>Fire Rate:</b> ${(p.risk_rate * 100).toFixed(1)}%
+    `);
+  }
+});
+
+// 加载 risk_zones.geojson
+fetch("risk_zones.geojson")
+  .then(r => r.json())
+  .then(data => riskLayer.addData(data));
+
+// ======================================================
+// Fire Points Layer
+// ======================================================
+const fireIcon = L.icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
+
+fireLayer = L.geoJSON(null, {
+  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon }),
+
+  onEachFeature: (feature, layer) => {
+    const p = feature.properties;
+    layer.bindPopup(`
+      <b>Date:</b> ${p.date}<br>
+      <b>Region:</b> ${p.region}<br>
+      <b>Season:</b> ${p.season}<br>
+      <b>Max Temp:</b> ${p.tmmx_c}<br>
+      <b>VPD:</b> ${p.vpd}
+    `);
+  }
+});
+
+// ======================================================
+// 事件监听
+// ======================================================
+document.getElementById("yearFilter").addEventListener("change", () => {
+  applyFilters();
+});
+
+document.getElementById("regionSelect").addEventListener("change", () => {
+  applyFilters();
+});
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  // Reset region/year
+  document.getElementById("yearFilter").value = "all";
+  document.getElementById("regionSelect").value = "all";
+
+  // Reset metrics
+  Object.keys(metricList).forEach(m => {
+    metricEnabled[m] = false;
+
+    document.getElementById(`chk_${m}`).checked = false;
+
+    const min = metricRange[m].min;
+    const max = metricRange[m].max;
+
+    metricMin[m] = min;
+    metricMax[m] = max;
+
+    document.getElementById(`min_${m}`).value = min;
+    document.getElementById(`max_${m}`).value = max;
+
+    document.getElementById(`txt_${m}`).textContent =
+      `${min.toFixed(2)} – ${max.toFixed(2)}`;
+  });
+
+  applyFilters();
+  updateHistogram();
+});
+
+// ======================================================
+// 图层控制
+// ======================================================
+L.control.layers(baseLayers, {
+  "Risk Zones": riskLayer,
+  "Wildfires": fireLayer
+}, { collapsed: false }).addTo(map);
+
+// ======================================================
+// 启动：加载 wildfire 数据
+// ======================================================
+loadWildfireData();
 
 </script>
 
