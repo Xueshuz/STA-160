@@ -164,12 +164,35 @@ var allFireData;   // full dataset for filtering
 fetch("fires_recent.geojson")
   .then(r => r.json())
   .then(data => {
-    // 1) 从 date 计算 year 字段
+    // 1) 从 date 中直接截取前 4 位作为年份
     data.features.forEach(f => {
-      var d = f.properties.date;       // e.g. "2017-01-31"
-      var y = new Date(d).getFullYear();
+      var d = String(f.properties.date || "");
+      var y = d.slice(0, 4);   // "2017-01-31" -> "2017"
       f.properties.year = y;
     });
+
+    allFireData = data;
+
+    // 2) 构建年份列表（去重 + 去掉空字符串）
+    var years = [...new Set(
+      data.features
+          .map(f => f.properties.year)
+          .filter(Boolean)
+    )];
+    years.sort();
+
+    var dropdown = document.getElementById("yearFilter");
+    years.forEach(y => {
+      var opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      dropdown.appendChild(opt);
+    });
+
+    // 3) 初始显示所有点
+    fireLayer.addData(data);
+  });
+
 
     allFireData = data;
 
