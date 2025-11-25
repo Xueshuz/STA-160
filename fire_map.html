@@ -9,19 +9,32 @@
 
   <style>
     html, body {
-      margin: 0; padding: 0;
-      height: 100%; font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
     }
 
-    #map { width: 100%; height: 100%; }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
 
-    /* Year Dropdown */
+    /* Year Dropdown（不遮住 +/− 按钮） */
     #yearFilter {
       position: absolute !important;
       top: 20px !important;
       left: 70px !important;
+
       width: 140px !important;
+      max-width: 140px !important;
+      min-width: 140px !important;
+
+      display: inline-block !important;
+      box-sizing: border-box !important;
+
       z-index: 999999 !important;
+
       padding: 5px 10px !important;
       background: white !important;
       border: 2px solid #333 !important;
@@ -31,55 +44,95 @@
 
     /* 左侧过滤面板 */
     #filterBar {
-      position: absolute; top: 80px; left: 20px;
-      width: 280px; background: white;
-      padding: 15px; z-index: 9999;
+      position: absolute;
+      top: 80px;
+      left: 20px;
+      width: 280px;
+      background: white;
+      padding: 15px;
+      z-index: 9999;
       border-radius: 8px;
-      box-shadow:0 0 10px rgba(0,0,0,0.3);
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
     }
 
-    label { font-weight: bold; display: block; margin-top: 10px; }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+    }
+
     select, input[type="range"], button {
-      width: 100%; padding: 6px;
-      margin-top: 6px; border-radius: 6px; border: 1px solid #aaa;
+      width: 100%;
+      margin-top: 6px;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid #aaa;
+      font-size: 13px;
     }
 
-    #rangeText { font-size: 13px; margin-top: 4px; }
+    #rangeText {
+      margin-top: 4px;
+      font-size: 13px;
+    }
+
     #resetBtn {
-      margin-top: 10px; background:#0f7b88; color: #fff;
-      border:none; cursor: pointer;
+      margin-top: 10px;
+      background: #0f7b88;
+      color: #fff;
+      border: none;
+      cursor: pointer;
     }
-    #resetBtn:hover { background:#0a5660; }
+    #resetBtn:hover {
+      background: #0a5660;
+    }
 
-    #noDataMsg { display:none; color:#c00; font-size:12px; margin-top:6px; }
+    #noDataMsg {
+      display: none;
+      color: #c00;
+      font-size: 12px;
+      margin-top: 6px;
+    }
 
-    #histogram { background:#fafafa; border:1px solid #ddd; border-radius:4px; }
-
-    /* 隐藏 Loading 覆盖层 */
-    #loadingOverlay { display:none !important; }
+    #histContainer {
+      margin-top: 12px;
+    }
+    #histogram {
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fafafa;
+    }
 
     /* Legend */
     .legend {
-      background:white; padding:10px; border-radius:6px;
-      box-shadow:0 0 6px rgba(0,0,0,0.3); font-size:12px;
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-size: 12px;
+      line-height: 18px;
     }
     .legend i {
-      width:16px; height:16px; float:left; margin-right:6px; opacity:0.8;
+      width: 16px;
+      height: 16px;
+      float: left;
+      margin-right: 6px;
+      opacity: 0.8;
     }
   </style>
 </head>
 
 <body>
 
-<!-- 年份选择（去掉 All Years） -->
+<!-- 年份选择（不再有 All Years） -->
 <select id="yearFilter"></select>
 
-<!-- 左侧过滤栏 -->
+<!-- 左侧过滤面板 -->
 <div id="filterBar">
   <label>Metric</label>
   <select id="metricSelect">
     <option value="tmmx_c">Max Temp (°C)</option>
-    <option value="vpd">VPD</option>
+    <option value="vpd">Vapor Pressure Deficit (VPD)</option>
   </select>
 
   <label>Region</label>
@@ -97,21 +150,24 @@
 
   <div id="noDataMsg">No fires match the current filters.</div>
 
-  <button id="resetBtn">Reset filters</button>
+  <button id="resetBtn" type="button">Reset filters</button>
 
-  <label style="margin-top:8px;">Distribution</label>
-  <canvas id="histogram" width="240" height="80"></canvas>
+  <div id="histContainer">
+    <label style="margin-top:8px;">Distribution</label>
+    <canvas id="histogram" width="240" height="80"></canvas>
+  </div>
 </div>
 
+<!-- 地图容器 -->
 <div id="map"></div>
 
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Turf.js -->
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
 <script>
-/***********************************************************
-  全局变量
-***********************************************************/
+/* ======================= 全局变量 ======================= */
 let map, fireLayer, riskLayer, statesLayer;
 let allFireData = null;
 let statesGeo = null;
@@ -126,198 +182,247 @@ let minVal = 0, maxVal = 100;
 const histCanvas = document.getElementById("histogram");
 const histCtx = histCanvas.getContext("2d");
 
-/***********************************************************
-  初始化地图
-***********************************************************/
+/* ======================= 初始化地图 ======================= */
 map = L.map("map").setView([39.5, -98.35], 4);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
-/***********************************************************
-  风险区
-***********************************************************/
+const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+const topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17,
+  attribution: "&copy; OpenTopoMap contributors"
+});
+
+const baseLayers = { "OpenStreetMap": osm, "Topo Map": topo };
+
+/* ======================= Risk Zones ======================= */
 const riskColors = {
-  "Very High":"#b10026",
-  "High":"#fd8d3c",
-  "Moderate":"#fecc5c",
-  "Low":"#ffffb2"
+  "Very High": "#b10026",
+  "High": "#fd8d3c",
+  "Moderate": "#fecc5c",
+  "Low": "#ffffb2"
 };
 
-riskLayer = L.geoJSON(null,{
-  style:f=>({
-    color:"#333", weight:0.5,
-    fillColor:riskColors[f.properties.risk_level]||"#ccc",
-    fillOpacity:0.6
-  })
+function styleRisk(feature) {
+  return {
+    color: "#333",
+    weight: 0.5,
+    fillColor: riskColors[feature.properties.risk_level] || "#ccc",
+    fillOpacity: 0.6
+  };
+}
+
+riskLayer = L.geoJSON(null, {
+  style: styleRisk,
+  onEachFeature: function (feature, layer) {
+    const p = feature.properties;
+    layer.bindPopup(
+      "<b>Risk Level:</b> " + p.risk_level +
+      "<br><b>Fire Days:</b> " + p.n_fire +
+      "<br><b>Total Days:</b> " + p.n_obs +
+      "<br><b>Fire Rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%"
+    );
+  }
 });
 
 fetch("risk_zones.geojson")
-  .then(r=>r.json())
-  .then(j=>riskLayer.addData(j));
+  .then(r => r.json())
+  .then(data => riskLayer.addData(data));
 
-/***********************************************************
-  Wildfire Layer
-***********************************************************/
+/* ======================= Wildfire points ======================= */
 const fireIcon = L.icon({
-  iconUrl:"https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-  iconSize:[25,41], iconAnchor:[12,41]
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
 });
 
-fireLayer = L.geoJSON(null,{
-  pointToLayer:(f,latlng)=>L.marker(latlng,{icon:fireIcon})
+fireLayer = L.geoJSON(null, {
+  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon }),
+  onEachFeature: function (feature, layer) {
+    const p = feature.properties;
+    layer.bindPopup(
+      "<b>Date:</b> " + p.date +
+      "<br><b>Region:</b> " + p.region +
+      "<br><b>Season:</b> " + p.season +
+      "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
+      "<br><b>VPD:</b> " + p.vpd
+    );
+  }
 });
 
-/***********************************************************
-  States Layer（不再加入 LayerControl）
-***********************************************************/
-statesLayer = L.geoJSON(null,{
-  style:()=>({color:"#444",weight:1,fillOpacity:0}),
-  onEachFeature:(feature,layer)=>{
+/* ======================= States Layer ======================= */
+statesLayer = L.geoJSON(null, {
+  style: () => ({ color: "#555", weight: 1, fillOpacity: 0 }),
+  onEachFeature: function (feature, layer) {
     const name = feature.properties.name;
     stateLayerByName[name] = layer;
 
-    layer.on("click",()=>{
+    layer.on("click", function () {
       document.getElementById("stateSelect").value = name;
       currentState = name;
       highlightState(name);
       applyFilters();
     });
+
+    layer.bindPopup("<b>State:</b> " + name);
   }
 });
 
 fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
-  .then(r=>r.json())
-  .then(j=>{
-    statesGeo = j;
-    statesLayer.addTo(map);
+  .then(r => r.json())
+  .then(data => {
+    statesGeo = data;
+    statesLayer.addData(statesGeo).addTo(map);
 
-    const sSel = document.getElementById("stateSelect");
-    j.features.forEach(f=>{
-      const o = document.createElement("option");
-      o.value = f.properties.name;
-      o.textContent = f.properties.name;
-      sSel.appendChild(o);
+    const stateSelect = document.getElementById("stateSelect");
+    statesGeo.features.forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.properties.name;
+      opt.textContent = f.properties.name;
+      stateSelect.appendChild(opt);
     });
   });
 
-function highlightState(name){
-  statesLayer.resetStyle();
-  if(name!=="all" && stateLayerByName[name])
-    stateLayerByName[name].setStyle({fillOpacity:0.2,fillColor:"#3388ff"});
+function highlightState(name) {
+  if (statesLayer && statesLayer.resetStyle) {
+    statesLayer.resetStyle();
+  }
+  if (name !== "all" && stateLayerByName[name]) {
+    stateLayerByName[name].setStyle({
+      fillOpacity: 0.2,
+      fillColor: "#3388ff"
+    });
+  }
 }
 
-/***********************************************************
-  加载 Wildfire 数据
-***********************************************************/
-fetch("fires_full.geojson")
-  .then(r=>r.json())
-  .then(data=>{
+/* ======================= 读取 wildfire 数据 ======================= */
+/* 注意这里：用你改过的 fires_full.geojosn */
+fetch("fires_full.geojosn")
+  .then(r => r.json())
+  .then(data => {
     allFireData = data;
 
-    // 标准化 year，并修复 region（把 South → Mid East）
-    allFireData.features.forEach(f=>{
-      let p = f.properties;
-
-      if(p.date) p.year = p.date.slice(0,4);
-      p.year = String(p.year);
-
-      if(p.region === "South") p.region = "Mid East";
+    // year 统一为字符串
+    allFireData.features.forEach(f => {
+      const p = f.properties;
+      if (p.date) {
+        p.year = String(p.date).slice(0, 4);
+      } else if (p.year != null) {
+        p.year = String(p.year);
+      }
     });
 
-    /******** Year 下拉菜单（不再有 All Years） ********/
-    const years = [...new Set(allFireData.features.map(f=>f.properties.year))]
-                    .sort();
-    const ySel = document.getElementById("yearFilter");
-    years.forEach(y=>{
-      const o=document.createElement("option");
-      o.value=y; o.textContent=y;
-      ySel.appendChild(o);
+    // -------- Year 下拉菜单（无 "All Years"） --------
+    const years = Array.from(new Set(
+      allFireData.features.map(f => f.properties.year)
+    )).filter(Boolean).sort();
+
+    const yearSelect = document.getElementById("yearFilter");
+    years.forEach(y => {
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearSelect.appendChild(opt);
     });
 
-    // 默认选第一个年份
     currentYear = years[0];
-    ySel.value = currentYear;
+    yearSelect.value = currentYear;
 
-    /******** Region 下拉菜单（自动读取，已替换 Mid East） ********/
-    const regions = [...new Set(allFireData.features.map(f=>f.properties.region))]
-                      .filter(Boolean).sort();
+    // -------- Region 下拉菜单（从数据自动读取）--------
+    const regions = Array.from(new Set(
+      allFireData.features.map(f => f.properties.region)
+    )).filter(Boolean).sort();
 
-    const rSel = document.getElementById("regionSelect");
-    rSel.innerHTML = "";
+    const regionSelect = document.getElementById("regionSelect");
+    regionSelect.innerHTML = "";
 
-    regions.forEach(r=>{
-      const o=document.createElement("option");
-      o.value=r; o.textContent=r;
-      rSel.appendChild(o);
+    const optAll = document.createElement("option");
+    optAll.value = "all";
+    optAll.textContent = "All regions";
+    regionSelect.appendChild(optAll);
+
+    regions.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r;
+      opt.textContent = r;
+      regionSelect.appendChild(opt);
     });
-
-    // 默认 region = all
-    const oAll = document.createElement("option");
-    oAll.value = "all";
-    oAll.textContent = "All regions";
-    rSel.insertBefore(oAll, rSel.firstChild);
 
     initializeMetricRange();
     applyFilters();
   });
 
-/***********************************************************
-  Metric Range
-***********************************************************/
-function initializeMetricRange(){
-  const metric = currentMetric;
-  let v = allFireData.features
-            .map(f=>parseFloat(f.properties[metric]))
-            .filter(x=>!isNaN(x));
+/* ======================= Metric 范围 ======================= */
+function initializeMetricRange() {
+  if (!allFireData) return;
 
-  minVal = Math.min(...v);
-  maxVal = Math.max(...v);
+  const vals = allFireData.features
+    .map(f => parseFloat(f.properties[currentMetric]))
+    .filter(v => !isNaN(v));
 
-  const minR = document.getElementById("minRange");
-  const maxR = document.getElementById("maxRange");
+  minVal = Math.min(...vals);
+  maxVal = Math.max(...vals);
 
-  minR.min=minVal; minR.max=maxVal; minR.value=minVal;
-  maxR.min=minVal; maxR.max=maxVal; maxR.value=maxVal;
+  const minSlider = document.getElementById("minRange");
+  const maxSlider = document.getElementById("maxRange");
+
+  minSlider.min = minVal;
+  minSlider.max = maxVal;
+  maxSlider.min = minVal;
+  maxSlider.max = maxVal;
+
+  minSlider.value = minVal;
+  maxSlider.value = maxVal;
 
   updateRangeLabel();
 }
 
-function updateRangeLabel(){
-  const n = currentMetric==="tmmx_c" ? "Max Temp (°C)" : "VPD";
+function updateRangeLabel() {
+  const name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "VPD";
   document.getElementById("rangeText").textContent =
-    `${n}: ${minVal.toFixed(1)} – ${maxVal.toFixed(1)}`;
+    name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
 }
 
-/***********************************************************
-  Filters
-***********************************************************/
-function applyFilters(){
-  if(!allFireData) return;
+/* ======================= 过滤逻辑 ======================= */
+function applyFilters() {
+  if (!allFireData) return;
 
   const filtered = {
-    type:"FeatureCollection",
-    features: allFireData.features.filter(f=>{
+    type: "FeatureCollection",
+    features: allFireData.features.filter(f => {
       const p = f.properties;
 
-      if(p.year !== currentYear) return false;
+      // 年份（必须匹配某一年）
+      if (p.year !== currentYear) return false;
 
-      if(currentState!=="all"){
-        const sf = statesGeo.features.find(x=>x.properties.name===currentState);
-        if(sf){
+      // 州 polygon（优先级最高）
+      if (currentState !== "all" && statesGeo) {
+        const stateFeature = statesGeo.features.find(
+          sf => sf.properties.name === currentState
+        );
+        if (stateFeature) {
           const pt = turf.point(f.geometry.coordinates);
-          if(!turf.booleanPointInPolygon(pt,sf)) return false;
+          if (!turf.booleanPointInPolygon(pt, stateFeature)) return false;
         }
       }
 
-      if(currentState==="all" && currentRegion!=="all"){
-        if(p.region !== currentRegion) return false;
+      // 若未选州，则再应用 region 筛选
+      if (currentState === "all" && currentRegion !== "all") {
+        if (p.region !== currentRegion) return false;
       }
 
+      // metric 范围
       const val = parseFloat(p[currentMetric]);
-      if(val<minVal || val>maxVal) return false;
+      if (isNaN(val) || val < minVal || val > maxVal) return false;
 
       return true;
     })
   };
+
+  const noDataMsg = document.getElementById("noDataMsg");
+  noDataMsg.style.display = filtered.features.length === 0 ? "block" : "none";
 
   fireLayer.clearLayers();
   fireLayer.addData(filtered);
@@ -326,114 +431,127 @@ function applyFilters(){
   updateHistogram(filtered);
 }
 
-function autoZoom(filtered){
-  const pts = filtered.features.map(f=>{
-    const c=f.geometry.coordinates;
-    return [c[1],c[0]];
-  });
-
-  if(!pts.length){
-    map.setView([39.5,-98.35],4);
+function autoZoom(filtered) {
+  if (!filtered.features.length) {
+    map.setView([39.5, -98.35], 4);
     return;
   }
-
-  const b = L.latLngBounds(pts);
-  map.fitBounds(b.pad(0.2));
+  const coords = filtered.features.map(f => {
+    const c = f.geometry.coordinates;
+    return [c[1], c[0]];
+  });
+  const bounds = L.latLngBounds(coords);
+  map.fitBounds(bounds.pad(0.2));
 }
 
-/***********************************************************
-  Histogram
-***********************************************************/
-function updateHistogram(filtered){
-  const vals = filtered.features
-                .map(f=>parseFloat(f.properties[currentMetric]))
-                .filter(x=>!isNaN(x));
+/* ======================= Histogram ======================= */
+function updateHistogram(filtered) {
+  const features = filtered.features;
+  histCtx.clearRect(0, 0, histCanvas.width, histCanvas.height);
+  if (!features.length) return;
 
-  histCtx.clearRect(0,0,histCanvas.width,histCanvas.height);
-  if(!vals.length) return;
+  const values = features
+    .map(f => parseFloat(f.properties[currentMetric]))
+    .filter(v => !isNaN(v));
 
-  let minV=Math.min(...vals), maxV=Math.max(...vals);
-  if(minV===maxV) maxV=minV+1;
+  if (!values.length) return;
 
-  let bins=10, counts=Array(bins).fill(0);
-  let step=(maxV-minV)/bins;
+  let minV = Math.min(...values);
+  let maxV = Math.max(...values);
+  if (minV === maxV) maxV = minV + 1;
 
-  vals.forEach(v=>{
-    let i=Math.floor((v-minV)/step);
-    if(i>=bins) i=bins-1;
-    counts[i]++;
+  const bins = 10;
+  const counts = new Array(bins).fill(0);
+  const step = (maxV - minV) / bins;
+
+  values.forEach(v => {
+    let idx = Math.floor((v - minV) / step);
+    if (idx < 0) idx = 0;
+    if (idx >= bins) idx = bins - 1;
+    counts[idx]++;
   });
 
-  let w=histCanvas.width, h=histCanvas.height;
-  let barW=w/bins, maxC=Math.max(...counts);
+  const w = histCanvas.width;
+  const h = histCanvas.height;
+  const maxCount = Math.max(...counts);
+  const barW = w / bins;
 
-  histCtx.fillStyle="#0f7b88";
-  counts.forEach((c,i)=>{
-    let barH = maxC ? (c/maxC)*(h-10) : 0;
-    histCtx.fillRect(i*barW+1, h-barH, barW-2, barH);
+  histCtx.fillStyle = "#0f7b88";
+  counts.forEach((c, i) => {
+    const barH = maxCount ? (c / maxCount) * (h - 10) : 0;
+    const x = i * barW + 1;
+    const y = h - barH;
+    histCtx.fillRect(x, y, barW - 2, barH);
   });
 }
 
-/***********************************************************
-  Event Listeners
-***********************************************************/
-document.getElementById("metricSelect").onchange=e=>{
-  currentMetric=e.target.value;
+/* ======================= 事件监听 ======================= */
+document.getElementById("metricSelect").addEventListener("change", function () {
+  currentMetric = this.value;
   initializeMetricRange();
   applyFilters();
-};
+});
 
-document.getElementById("yearFilter").onchange=e=>{
-  currentYear=e.target.value;
+document.getElementById("yearFilter").addEventListener("change", function () {
+  currentYear = this.value;
   initializeMetricRange();
   applyFilters();
-};
+});
 
-document.getElementById("regionSelect").onchange=e=>{
-  currentRegion=e.target.value;
+document.getElementById("regionSelect").addEventListener("change", function () {
+  currentRegion = this.value;
   applyFilters();
-};
+});
 
-document.getElementById("stateSelect").onchange=e=>{
-  currentState=e.target.value;
+document.getElementById("stateSelect").addEventListener("change", function () {
+  currentState = this.value;
   highlightState(currentState);
   applyFilters();
-};
+});
 
-document.getElementById("minRange").oninput=e=>{
-  minVal=parseFloat(e.target.value);
-  updateRangeLabel(); applyFilters();
-};
+document.getElementById("minRange").addEventListener("input", function () {
+  minVal = parseFloat(this.value);
+  if (minVal > maxVal) {
+    maxVal = minVal;
+    document.getElementById("maxRange").value = maxVal;
+  }
+  updateRangeLabel();
+  applyFilters();
+});
 
-document.getElementById("maxRange").oninput=e=>{
-  maxVal=parseFloat(e.target.value);
-  updateRangeLabel(); applyFilters();
-};
+document.getElementById("maxRange").addEventListener("input", function () {
+  maxVal = parseFloat(this.value);
+  if (maxVal < minVal) {
+    minVal = maxVal;
+    document.getElementById("minRange").value = minVal;
+  }
+  updateRangeLabel();
+  applyFilters();
+});
 
-document.getElementById("resetBtn").onclick=()=>{
-  currentState="all";
-  currentRegion="all";
-  document.getElementById("stateSelect").value="all";
-  document.getElementById("regionSelect").value="all";
-
+document.getElementById("resetBtn").addEventListener("click", function () {
+  currentRegion = "all";
+  currentState = "all";
+  document.getElementById("regionSelect").value = "all";
+  document.getElementById("stateSelect").value = "all";
+  highlightState("all");
   initializeMetricRange();
   applyFilters();
-};
+});
 
-/***********************************************************
-  Legend
-***********************************************************/
-L.control.layers({},{
+/* ======================= Layer 控制 + Legend ======================= */
+const overlays = {
   "Risk Zones": riskLayer,
   "Wildfires": fireLayer
-},{collapsed:false}).addTo(map);
+};
+L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
 
-const legend = L.control({position:"bottomright"});
-legend.onAdd=function(){
-  const div=L.DomUtil.create("div","legend");
+const legend = L.control({ position: "bottomright" });
+legend.onAdd = function () {
+  const div = L.DomUtil.create("div", "legend");
   div.innerHTML += "<b>Risk Levels</b><br>";
-  for(const k in riskColors){
-    div.innerHTML+=`<i style="background:${riskColors[k]};"></i> ${k}<br>`;
+  for (const k in riskColors) {
+    div.innerHTML += '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
   }
   return div;
 };
@@ -442,4 +560,3 @@ legend.addTo(map);
 
 </body>
 </html>
-
