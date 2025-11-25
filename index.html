@@ -5,11 +5,8 @@
   <title>Wildfire Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Leaflet CSS（无 integrity） -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
     html, body {
@@ -17,7 +14,6 @@
       margin: 0;
       padding: 0;
     }
-
     #map {
       width: 100%;
       height: 100%;
@@ -26,7 +22,7 @@
     /* Year dropdown */
     #yearFilter {
       position: absolute;
-      top: 70px;          /* 放在缩放按钮下面一点，更明显 */
+      top: 70px;
       left: 10px;
       z-index: 9999;
       padding: 8px 12px;
@@ -67,27 +63,21 @@
 <!-- Map container -->
 <div id="map"></div>
 
-<!-- Leaflet JS（无 integrity） -->
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
+
 <script>
-// -------------------- 1. Initialize the map --------------------
+// -------------------- 1. Initialize Map --------------------
 var map = L.map("map").setView([39.5, -98.35], 4);
 
 var osm = L.tileLayer(
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {
-    maxZoom: 18,
-    attribution: "&copy; OpenStreetMap contributors"
-  }
+  { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }
 ).addTo(map);
 
 var topo = L.tileLayer(
   "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-  {
-    maxZoom: 17,
-    attribution: "&copy; OpenTopoMap"
-  }
+  { maxZoom: 17, attribution: "&copy; OpenTopoMap" }
 );
 
 var baseLayers = {
@@ -95,7 +85,7 @@ var baseLayers = {
   "Topo Map": topo
 };
 
-// -------------------- 2. Risk Zone Colors --------------------
+// -------------------- 2. Risk Zones --------------------
 var riskColors = {
   "Very High": "#b10026",
   "High": "#fd8d3c",
@@ -104,11 +94,10 @@ var riskColors = {
 };
 
 function styleRisk(feature) {
-  var lvl = feature.properties.risk_level;
   return {
     color: "#333",
     weight: 0.5,
-    fillColor: riskColors[lvl] || "#cccccc",
+    fillColor: riskColors[feature.properties.risk_level] || "#ccc",
     fillOpacity: 0.6
   };
 }
@@ -129,9 +118,7 @@ var riskLayer = L.geoJSON(null, {
 // Load risk zones
 fetch("risk_zones.geojson")
   .then(r => r.json())
-  .then(data => {
-    riskLayer.addData(data);
-  });
+  .then(data => riskLayer.addData(data));
 
 // -------------------- 3. Fire Points --------------------
 var fireIcon = L.icon({
@@ -142,9 +129,7 @@ var fireIcon = L.icon({
 });
 
 var fireLayer = L.geoJSON(null, {
-  pointToLayer: function (feature, latlng) {
-    return L.marker(latlng, { icon: fireIcon });
-  },
+  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon }),
   onEachFeature: function (feature, layer) {
     var p = feature.properties;
     layer.bindPopup(
@@ -158,23 +143,24 @@ var fireLayer = L.geoJSON(null, {
   }
 });
 
-var allFireData;
+var allFireData = null;
 
-// Load fire points
+// Load fire dataset
 fetch("fires_full.geojson")
   .then(r => r.json())
   .then(data => {
 
-    // Add year field
+    // Add year field from date
     data.features.forEach(f => {
-      var d = String(f.properties.date || "");
-      f.properties.year = d.slice(0, 4);
+      f.properties.year = String(f.properties.date).slice(0, 4);
     });
 
     allFireData = data;
 
-    // Build year dropdown
-    var years = [...new Set(data.features.map(f => f.properties.year).filter(Boolean))];
+    // Populate year dropdown
+    var years = [...new Set(
+      data.features.map(f => f.properties.year).filter(Boolean)
+    )];
     years.sort();
 
     var dropdown = document.getElementById("yearFilter");
@@ -185,15 +171,16 @@ fetch("fires_full.geojson")
       dropdown.appendChild(opt);
     });
 
+    // Default show all
     fireLayer.addData(data);
   });
 
-// -------------------- 4. Year Filter --------------------
+// -------------------- 4. Year Filter Logic --------------------
 document.getElementById("yearFilter").addEventListener("change", function () {
+  if (!allFireData) return;
+
   var selected = this.value;
   fireLayer.clearLayers();
-
-  if (!allFireData) return;
 
   if (selected === "all") {
     fireLayer.addData(allFireData);
@@ -209,54 +196,11 @@ document.getElementById("yearFilter").addEventListener("change", function () {
 });
 
 // -------------------- 5. Layer Controls --------------------
-var overlayLayers = {
-  "Risk Zones": riskLayer,
-  "Recent Fires": fireLayer
-};
-
-L.control.layers(baseLayers, overlayLayers, { collapsed: false }).addTo(map);
-
-// -------------------- 6. Legend --------------------
-var legend = L.control({ position: "bottomright" });
-
-legend.onAdd = function () {
-  var div = L.DomUtil.create("div", "legend");
-  div.innerHTML += "<b>Risk Levels</b><br>";
-  for (var k in riskColors) {
-    div.innerHTML +=
-      '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
-  }
-  return div;
-};
-
-legend.addTo(map);
-</script>
-", function () {
-  var selected = this.value;
-  fireLayer.clearLayers();
-
-  if (!allFireData) return;  // 数据还没加载完就点了的话，直接返回
-
-  if (selected === "all") {
-    fireLayer.addData(allFireData);
-  } else {
-    var filtered = {
-      type: "FeatureCollection",
-      features: allFireData.features.filter(
-        f => String(f.properties.year) === String(selected)
-      )
-    };
-    fireLayer.addData(filtered);
-  }
-});
-
-// -------------------- 5. Layer Controls --------------------
-var overlayLayers = {
-  "Risk Zones": riskLayer,
-  "Recent Fires": fireLayer
-};
-
-L.control.layers(baseLayers, overlayLayers, { collapsed: false }).addTo(map);
+L.control.layers(
+  baseLayers,
+  { "Risk Zones": riskLayer, "Recent Fires": fireLayer },
+  { collapsed: false }
+).addTo(map);
 
 // -------------------- 6. Legend --------------------
 var legend = L.control({ position: "bottomright" });
@@ -266,7 +210,7 @@ legend.onAdd = function () {
   div.innerHTML += "<b>Risk Levels</b><br>";
   for (var k in riskColors) {
     div.innerHTML +=
-      '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
+      `<i style="background:${riskColors[k]}"></i> ${k}<br>`;
   }
   return div;
 };
