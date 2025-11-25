@@ -21,29 +21,29 @@
       height: 100%;
     }
 
-    /* Year Dropdown (avoid overlapping zoom buttons) */
-   #yearFilter {
-    position: absolute !important;  
-    top: 20px !important;
-    left: 70px !important;    
-  
-    width: 140px !important;
-    max-width: 140px !important;
-    min-width: 140px !important;
-  
-    display: inline-block !important;   
-    box-sizing: border-box !important;
-  
-    z-index: 999999 !important;
-  
-    padding: 5px 10px !important;
-    background: white !important;
-    border: 2px solid #333 !important;
-    border-radius: 6px !important;
-    box-shadow: 0 0 4px rgba(0,0,0,0.3) !important;
-  }
+    /* Year Dropdown（不遮住 +/− 按钮） */
+    #yearFilter {
+      position: absolute !important;
+      top: 20px !important;
+      left: 70px !important;
 
-    /* Floating filter panel */
+      width: 140px !important;
+      max-width: 140px !important;
+      min-width: 140px !important;
+
+      display: inline-block !important;
+      box-sizing: border-box !important;
+
+      z-index: 999999 !important;
+
+      padding: 5px 10px !important;
+      background: white !important;
+      border: 2px solid #333 !important;
+      border-radius: 6px !important;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3) !important;
+    }
+
+    /* 左侧过滤面板 */
     #filterBar {
       position: absolute;
       top: 80px;
@@ -62,12 +62,47 @@
       margin-top: 10px;
     }
 
-    select, input[type="range"] {
+    select, input[type="range"], button {
       width: 100%;
       margin-top: 6px;
       padding: 6px;
       border-radius: 6px;
       border: 1px solid #aaa;
+      font-size: 13px;
+    }
+
+    #rangeText {
+      margin-top: 4px;
+      font-size: 13px;
+    }
+
+    #resetBtn {
+      margin-top: 10px;
+      background: #0f7b88;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+    #resetBtn:hover {
+      background: #0a5660;
+    }
+
+    #noDataMsg {
+      display: none;
+      color: #c00;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    /* 简单小 histogram */
+    #histContainer {
+      margin-top: 12px;
+    }
+    #histogram {
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fafafa;
     }
 
     /* Legend */
@@ -86,17 +121,34 @@
       margin-right: 6px;
       opacity: 0.8;
     }
+
+    /* Loading 覆盖层 */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100000;
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
+    .loading-overlay.hidden {
+      display: none;
+    }
   </style>
 </head>
 
 <body>
 
-<!-- Year Dropdown -->
+<!-- 年份选择 -->
 <select id="yearFilter">
   <option value="all">All Years</option>
 </select>
 
-<!-- Filter Panel -->
+<!-- 左侧过滤面板 -->
 <div id="filterBar">
   <label>Metric</label>
   <select id="metricSelect">
@@ -109,23 +161,52 @@
     <option value="all">All regions</option>
   </select>
 
-  <label id="rangeLabel">Value range</label>
+  <label>Value range</label>
   <div id="rangeText">–</div>
   <input type="range" id="minRange" step="0.1">
   <input type="range" id="maxRange" step="0.1">
+
+  <div id="noDataMsg">No fires match the current filters.</div>
+
+  <button id="resetBtn" type="button">Reset filters</button>
+
+  <div id="histContainer">
+    <label style="margin-top:8px;">Distribution</label>
+    <canvas id="histogram" width="240" height="80"></canvas>
+  </div>
 </div>
 
-<!-- Map -->
+<!-- Loading -->
+<div id="loadingOverlay" class="loading-overlay">
+  Loading wildfire data...
+</div>
+
+<!-- 地图容器 -->
 <div id="map"></div>
 
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-// ======================================================
-// 1. Initialize Map
-// ======================================================
-var map = L.map("map").setView([39.5, -98.35], 4);
+// ======================== 全局变量 ========================
+var map, fireLayer, riskLayer;
+var allFireData = null;
+
+var currentMetric = "tmmx_c";   // 'tmmx_c' 或 'vpd'
+var currentRegion = "all";
+var currentYear = "all";
+var minVal = 0, maxVal = 100;
+
+var histCanvas = document.getElementById("histogram");
+var histCtx = histCanvas.getContext("2d");
+var loadingOverlay = document.getElementById("loadingOverlay");
+
+function setLoading(isLoading) {
+  loadingOverlay.classList.toggle("hidden", !isLoading);
+}
+
+// ======================== 初始化地图 ========================
+map = L.map("map").setView([39.5, -98.35], 4);
 
 var osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 18,
@@ -139,10 +220,7 @@ var topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
 
 var baseLayers = { "OpenStreetMap": osm, "Topo Map": topo };
 
-
-// ======================================================
-// 2. Risk Zone Colors
-// ======================================================
+// ======================== Risk Zones（底图） ========================
 var riskColors = {
   "Very High": "#b10026",
   "High": "#fd8d3c",
@@ -159,7 +237,7 @@ function styleRisk(feature) {
   };
 }
 
-var riskLayer = L.geoJSON(null, {
+riskLayer = L.geoJSON(null, {
   style: styleRisk,
   onEachFeature: function (feature, layer) {
     var p = feature.properties;
@@ -176,53 +254,62 @@ fetch("risk_zones.geojson")
   .then(r => r.json())
   .then(data => riskLayer.addData(data));
 
-
-// ======================================================
-// 3. Fire Points Layer
-// ======================================================
+// ======================== Wildfire points ========================
 var fireIcon = L.icon({
   iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41]
 });
 
-var fireLayer = L.geoJSON(null, {
-  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon })
+fireLayer = L.geoJSON(null, {
+  pointToLayer: function(feature, latlng) {
+    return L.marker(latlng, { icon: fireIcon });
+  },
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
+    layer.bindPopup(
+      "<b>Date:</b> " + p.date +
+      "<br><b>Region:</b> " + p.region +
+      "<br><b>Season:</b> " + p.season +
+      "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
+      "<br><b>VPD:</b> " + p.vpd
+    );
+  }
 });
 
-var allFireData;
-var currentMetric = "tmmx_c";
-var currentRegion = "all";
-var minVal = 0, maxVal = 100;
+// ======================== 读取 wildfire 数据 ========================
+setLoading(true);
 
-
-// ======================================================
-// 4. Load Fire Data
-// ======================================================
-fetch("fires_full.geojson")
+fetch("fires_recent.geojson")   // 现在用的是最近两年的 5000 个点
   .then(r => r.json())
   .then(data => {
     allFireData = data;
 
-    // Extract year
-    data.features.forEach(f => {
-      f.properties.year = String(f.properties.date).slice(0, 4);
+    // 从 date 解析出 year
+    allFireData.features.forEach(function(f) {
+      var d = String(f.properties.date || "");
+      f.properties.year = d.slice(0, 4);
     });
 
-    // Build year dropdown
-    var years = [...new Set(data.features.map(f => f.properties.year))].sort();
+    // 构建 year 下拉菜单
+    var years = Array.from(new Set(
+      allFireData.features.map(f => f.properties.year)
+    )).sort();
+
     var yearSelect = document.getElementById("yearFilter");
-    years.forEach(y => {
+    years.forEach(function(y) {
       var opt = document.createElement("option");
       opt.value = y;
       opt.textContent = y;
       yearSelect.appendChild(opt);
     });
 
-    // Build region dropdown
-    var regions = [...new Set(data.features.map(f => f.properties.region))];
+    // 构建 region 下拉菜单
+    var regions = Array.from(new Set(
+      allFireData.features.map(f => f.properties.region)
+    ));
     var regionSelect = document.getElementById("regionSelect");
-    regions.forEach(r => {
+    regions.forEach(function(r) {
       if (!r) return;
       var opt = document.createElement("option");
       opt.value = r;
@@ -230,80 +317,230 @@ fetch("fires_full.geojson")
       regionSelect.appendChild(opt);
     });
 
-    fireLayer.addData(data);
+    // 初始化 slider 范围 + 首次画图
+    initializeMetricRange();
+    applyFilters();
+
+    setLoading(false);
+  })
+  .catch(function(err) {
+    console.error(err);
+    setLoading(false);
   });
 
+// ======================== 更新 range 文本 ========================
+function updateRangeLabel() {
+  var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "VPD";
+  document.getElementById("rangeText").textContent =
+    name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
+}
 
-// ======================================================
-// 5. Filtering Logic
-// ======================================================
+// 按当前 Year + Region + Metric 重新算 slider 的 min/max
+function initializeMetricRange() {
+  if (!allFireData) return;
+
+  var metric = currentMetric;
+  var year = document.getElementById("yearFilter").value;
+  var region = document.getElementById("regionSelect").value;
+
+  var subset = allFireData.features.filter(function(f) {
+    var p = f.properties;
+    if (year !== "all" && p.year !== year) return false;
+    if (region !== "all" && p.region !== region) return false;
+    return true;
+  });
+
+  var values = subset
+    .map(function(f) { return parseFloat(f.properties[metric]); })
+    .filter(function(v) { return !isNaN(v); });
+
+  if (!values.length) {
+    // 如果这个组合没数据，就用全局的范围
+    values = allFireData.features
+      .map(function(f) { return parseFloat(f.properties[metric]); })
+      .filter(function(v) { return !isNaN(v); });
+  }
+
+  if (!values.length) {
+    minVal = 0;
+    maxVal = 0;
+  } else {
+    minVal = Math.min.apply(null, values);
+    maxVal = Math.max.apply(null, values);
+  }
+
+  var minSlider = document.getElementById("minRange");
+  var maxSlider = document.getElementById("maxRange");
+
+  minSlider.min = minVal;
+  minSlider.max = maxVal;
+  maxSlider.min = minVal;
+  maxSlider.max = maxVal;
+
+  minSlider.value = minVal;
+  maxSlider.value = maxVal;
+
+  updateRangeLabel();
+}
+
+// 主过滤函数
 function applyFilters() {
   if (!allFireData) return;
 
   var selectedYear = document.getElementById("yearFilter").value;
+  var selectedRegion = document.getElementById("regionSelect").value;
+
+  currentYear = selectedYear;
+  currentRegion = selectedRegion;
 
   var filtered = {
     type: "FeatureCollection",
-    features: allFireData.features.filter(f => {
+    features: allFireData.features.filter(function(f) {
       var p = f.properties;
 
       if (selectedYear !== "all" && p.year !== selectedYear) return false;
-      if (currentRegion !== "all" && p.region !== currentRegion) return false;
+      if (selectedRegion !== "all" && p.region !== selectedRegion) return false;
 
       var val = parseFloat(p[currentMetric]);
-      return val >= minVal && val <= maxVal;
+      if (isNaN(val)) return false;
+      if (val < minVal || val > maxVal) return false;
+
+      return true;
     })
   };
 
+  // “没有数据” 提示
+  var noDataMsg = document.getElementById("noDataMsg");
+  if (filtered.features.length === 0) {
+    noDataMsg.style.display = "block";
+  } else {
+    noDataMsg.style.display = "none";
+  }
+
   fireLayer.clearLayers();
   fireLayer.addData(filtered);
+
+  autoZoom(filtered);
+  updateHistogram(filtered);
 }
 
+// 自动 zoom 到当前点
+function autoZoom(filtered) {
+  if (!filtered.features.length) {
+    map.setView([39.5, -98.35], 4);
+    return;
+  }
+  var coords = [];
+  filtered.features.forEach(function(f) {
+    if (!f.geometry || f.geometry.type !== "Point") return;
+    var c = f.geometry.coordinates;
+    coords.push([c[1], c[0]]);
+  });
+  if (!coords.length) {
+    map.setView([39.5, -98.35], 4);
+    return;
+  }
+  var bounds = L.latLngBounds(coords);
+  map.fitBounds(bounds.pad(0.2));
+}
 
-// Metric selection
+// 简单 histogram，小条形图
+function updateHistogram(filtered) {
+  var features = (filtered && filtered.features.length)
+    ? filtered.features
+    : (allFireData ? allFireData.features : []);
+
+  histCtx.clearRect(0, 0, histCanvas.width, histCanvas.height);
+  if (!features.length) return;
+
+  var values = features
+    .map(function(f) { return parseFloat(f.properties[currentMetric]); })
+    .filter(function(v) { return !isNaN(v); });
+
+  if (!values.length) return;
+
+  var minV = Math.min.apply(null, values);
+  var maxV = Math.max.apply(null, values);
+  if (minV === maxV) maxV = minV + 1;
+
+  var bins = 10;
+  var counts = new Array(bins).fill(0);
+  var step = (maxV - minV) / bins;
+
+  values.forEach(function(v) {
+    var idx = Math.floor((v - minV) / step);
+    if (idx < 0) idx = 0;
+    if (idx >= bins) idx = bins - 1;
+    counts[idx]++;
+  });
+
+  var w = histCanvas.width;
+  var h = histCanvas.height;
+  var maxCount = Math.max.apply(null, counts);
+  var barW = w / bins;
+
+  histCtx.fillStyle = "#0f7b88";
+  counts.forEach(function(c, i) {
+    var barH = maxCount ? (c / maxCount) * (h - 10) : 0;
+    var x = i * barW + 1;
+    var y = h - barH;
+    histCtx.fillRect(x, y, barW - 2, barH);
+  });
+}
+
+// ======================== 事件监听 ========================
 document.getElementById("metricSelect").addEventListener("change", function () {
   currentMetric = this.value;
-
-  // update min-max range
-  var values = allFireData.features.map(f => parseFloat(f.properties[currentMetric]));
-  minVal = Math.min(...values);
-  maxVal = Math.max(...values);
-
-  document.getElementById("minRange").min = minVal;
-  document.getElementById("minRange").max = maxVal;
-  document.getElementById("maxRange").min = minVal;
-  document.getElementById("maxRange").max = maxVal;
-
-  document.getElementById("minRange").value = minVal;
-  document.getElementById("maxRange").value = maxVal;
-
-  document.getElementById("rangeText").textContent =
-    `${currentMetric.toUpperCase()}: ${minVal.toFixed(1)} – ${maxVal.toFixed(1)}`;
-
+  initializeMetricRange();
   applyFilters();
 });
 
 document.getElementById("regionSelect").addEventListener("change", function () {
   currentRegion = this.value;
+  initializeMetricRange();
   applyFilters();
 });
 
-document.getElementById("yearFilter").addEventListener("change", applyFilters);
+document.getElementById("yearFilter").addEventListener("change", function () {
+  currentYear = this.value;
+  initializeMetricRange();
+  applyFilters();
+});
 
 document.getElementById("minRange").addEventListener("input", function () {
   minVal = parseFloat(this.value);
+  if (minVal > maxVal) {
+    maxVal = minVal;
+    document.getElementById("maxRange").value = maxVal;
+  }
+  updateRangeLabel();      // 🔥 关键：拖 slider 时立刻更新文字
   applyFilters();
 });
 
 document.getElementById("maxRange").addEventListener("input", function () {
   maxVal = parseFloat(this.value);
+  if (maxVal < minVal) {
+    minVal = maxVal;
+    document.getElementById("minRange").value = minVal;
+  }
+  updateRangeLabel();      // 🔥 关键：拖 slider 时立刻更新文字
   applyFilters();
 });
 
+document.getElementById("resetBtn").addEventListener("click", function () {
+  document.getElementById("yearFilter").value = "all";
+  document.getElementById("regionSelect").value = "all";
+  document.getElementById("metricSelect").value = "tmmx_c";
 
-// ======================================================
-// 6. Layer Controls + Legend
-// ======================================================
+  currentMetric = "tmmx_c";
+  currentRegion = "all";
+  currentYear = "all";
+
+  initializeMetricRange();
+  applyFilters();
+});
+
+// ======================== Layer 控制 + Legend ========================
 var overlays = { "Risk Zones": riskLayer, "Wildfires": fireLayer };
 L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
 
@@ -312,7 +549,7 @@ legend.onAdd = function () {
   var div = L.DomUtil.create("div", "legend");
   div.innerHTML += "<b>Risk Levels</b><br>";
   for (var k in riskColors) {
-    div.innerHTML += `<i style="background:${riskColors[k]}"></i> ${k}<br>`;
+    div.innerHTML += '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
   }
   return div;
 };
@@ -321,5 +558,4 @@ legend.addTo(map);
 </script>
 
 </body>
-</html>
 </html>
