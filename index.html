@@ -1,22 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>Wildfire Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Leaflet CSS (NO integrity, NO crossorigin) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
- <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
 
   <style>
-    html, body, #map {
+    html, body {
       height: 100%;
       margin: 0;
       padding: 0;
     }
 
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Dropdown styling */
+    #yearFilter {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 9999;
+      padding: 6px 10px;
+      background: white;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+
+    /* Legend styling */
     .legend {
       background: white;
       padding: 10px;
@@ -26,7 +47,6 @@
       font-size: 12px;
       line-height: 18px;
     }
-
     .legend i {
       width: 16px;
       height: 16px;
@@ -36,134 +56,176 @@
     }
   </style>
 </head>
+
 <body>
 
+<!-- Year Dropdown -->
+<select id="yearFilter">
+  <option value="all">All Years</option>
+</select>
+
+<!-- Map container -->
 <div id="map"></div>
 
-<!-- Leaflet JS (NO integrity, NO crossorigin) -->
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
-</script>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+// -------------------- 1. Initialize the map --------------------
+var map = L.map("map").setView([39.5, -98.35], 4);
 
-  // ---------- 1. 初始化地图 ----------
-  var map = L.map('map').setView([39.5, -98.35], 4);
-
-  var osm = L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {
-      maxZoom: 18,
-      attribution: '&copy; OpenStreetMap contributors'
-    }
-  ).addTo(map);
-
-  var topo = L.tileLayer(
-    'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    {
-      maxZoom: 17,
-      attribution: '&copy; OpenTopoMap'
-    }
-  );
-
-  var baseLayers = {
-    "OpenStreetMap": osm,
-    "Topo Map": topo
-  };
-
-  // ---------- 2. 风险区域颜色 ----------
-  var riskColors = {
-    "Very High": "#b10026",
-    "High": "#fd8d3c",
-    "Moderate": "#fecc5c",
-    "Low": "#ffffb2"
-  };
-
-  function styleRisk(feature) {
-    var lvl = feature.properties.risk_level;
-    return {
-      color: "#333",
-      weight: 0.5,
-      fillColor: riskColors[lvl] || "#cccccc",
-      fillOpacity: 0.6
-    };
+// Base layers
+var osm = L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {
+    maxZoom: 18,
+    attribution: "&copy; OpenStreetMap contributors"
   }
+).addTo(map);
 
-  // ---------- 3. 加载风险区域 ----------
-  var riskLayer = L.geoJSON(null, {
-    style: styleRisk,
-    onEachFeature: function (feature, layer) {
-      var p = feature.properties;
-      layer.bindPopup(
-        "<b>Risk Level:</b> " + p.risk_level +
-        "<br><b>Fire Days:</b> " + p.n_fire +
-        "<br><b>Total Days:</b> " + p.n_obs +
-        "<br><b>Fire Rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%"
-      );
-    }
-  });
+var topo = L.tileLayer(
+  "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+  {
+    maxZoom: 17,
+    attribution: "&copy; OpenTopoMap"
+  }
+);
 
-  fetch("risk_zones.geojson")
-    .then(response => response.json())
-    .then(data => riskLayer.addData(data));
+var baseLayers = {
+  "OpenStreetMap": osm,
+  "Topo Map": topo
+};
 
+// -------------------- 2. Risk Zone Colors --------------------
+var riskColors = {
+  "Very High": "#b10026",
+  "High": "#fd8d3c",
+  "Moderate": "#fecc5c",
+  "Low": "#ffffb2"
+};
 
-  // ---------- 4. 最近火点 ----------
-  var fireIcon = L.icon({
-    iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34]
+function styleRisk(feature) {
+  var lvl = feature.properties.risk_level;
+  return {
+    color: "#333",
+    weight: 0.5,
+    fillColor: riskColors[lvl] || "#cccccc",
+    fillOpacity: 0.6
+  };
+}
+
+// Risk layer
+var riskLayer = L.geoJSON(null, {
+  style: styleRisk,
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
+    layer.bindPopup(
+      "<b>Risk Level:</b> " + p.risk_level +
+      "<br><b>Fire Days:</b> " + p.n_fire +
+      "<br><b>Total Days:</b> " + p.n_obs +
+      "<br><b>Fire Rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%"
+    );
+  }
 });
 
-
-  var fireLayer = L.geoJSON(null, {
-    pointToLayer: function (feature, latlng) {
-      return L.marker(latlng, {icon: fireIcon});
-    },
-    onEachFeature: function (feature, layer) {
-      var p = feature.properties;
-      layer.bindPopup(
-        "<b>Date:</b> " + p.date +
-        "<br><b>Region:</b> " + p.region +
-        "<br><b>Season:</b> " + p.season +
-        "<br><b>Temp (°C):</b> " + p.tmmx_c +
-        "<br><b>VPD:</b> " + p.vpd
-      );
-    }
+// Fetch Risk Zones
+fetch("risk_zones.geojson")
+  .then(r => r.json())
+  .then(data => {
+    riskLayer.addData(data);
   });
 
-  fetch("fires_recent.geojson")
-    .then(response => response.json())
-    .then(data => fireLayer.addData(data));
+// -------------------- 3. Recent Fires Layer (with new red icon) --------------------
+var fireIcon = L.icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34]
+});
 
+var fireLayer = L.geoJSON(null, {
+  pointToLayer: function (feature, latlng) {
+    return L.marker(latlng, { icon: fireIcon });
+  },
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
+    layer.bindPopup(
+      "<b>Date:</b> " + p.date +
+      "<br><b>Year:</b> " + p.year +
+      "<br><b>Region:</b> " + p.region +
+      "<br><b>Season:</b> " + p.season +
+      "<br><b>Temp (°C):</b> " + p.tmmx_c +
+      "<br><b>VPD:</b> " + p.vpd
+    );
+  }
+});
 
-  // ---------- 5. 控制层 ----------
-  var overlayLayers = {
-    "Risk Zones": riskLayer,
-    "Recent Fires": fireLayer
-  };
+// Store full fire dataset for filtering
+var allFireData;
 
-  L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
+// Fetch fire points
+fetch("fires_recent.geojson")
+  .then(r => r.json())
+  .then(data => {
+    allFireData = data;
 
+    // Extract all years
+    var years = [...new Set(data.features.map(f => f.properties.year))];
+    years.sort();
 
-  // ---------- 6. 图例 ----------
-  var legend = L.control({ position: "bottomright" });
+    // Populate dropdown
+    var dropdown = document.getElementById("yearFilter");
+    years.forEach(y => {
+      var opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      dropdown.appendChild(opt);
+    });
 
-  legend.onAdd = function () {
-    var div = L.DomUtil.create("div", "legend");
-    div.innerHTML += "<b>Risk Levels</b><br>";
+    fireLayer.addData(data);
+  });
 
-    for (var k in riskColors) {
-      div.innerHTML +=
-        '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
-    }
+// -------------------- 4. Year Filter Logic --------------------
+document.getElementById("yearFilter").addEventListener("change", function () {
+  var selected = this.value;
+  fireLayer.clearLayers();
 
-    return div;
-  };
+  if (selected === "all") {
+    fireLayer.addData(allFireData);
+  } else {
+    var filtered = {
+      type: "FeatureCollection",
+      features: allFireData.features.filter(
+        f => f.properties.year == selected
+      )
+    };
+    fireLayer.addData(filtered);
+  }
+});
 
-  legend.addTo(map);
+// -------------------- 5. Layer Controls --------------------
+var overlayLayers = {
+  "Risk Zones": riskLayer,
+  "Recent Fires": fireLayer
+};
 
+L.control.layers(baseLayers, overlayLayers, { collapsed: false }).addTo(map);
+
+// -------------------- 6. Legend --------------------
+var legend = L.control({ position: "bottomright" });
+
+legend.onAdd = function () {
+  var div = L.DomUtil.create("div", "legend");
+  div.innerHTML += "<b>Risk Levels</b><br>";
+  for (var k in riskColors) {
+    div.innerHTML +=
+      '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
+  }
+  return div;
+};
+
+legend.addTo(map);
 </script>
+
 </body>
 </html>
