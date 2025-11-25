@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Wildfire Explorer</title>
+  <title>Wildfire Explorer — States Filter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Leaflet CSS -->
@@ -21,12 +21,21 @@
       height: 100%;
     }
 
+    /* Year Dropdown（不遮住 +/− 按钮） */
     #yearFilter {
       position: absolute !important;
       top: 20px !important;
       left: 70px !important;
+
       width: 140px !important;
+      max-width: 140px !important;
+      min-width: 140px !important;
+
+      display: inline-block !important;
+      box-sizing: border-box !important;
+
       z-index: 999999 !important;
+
       padding: 5px 10px !important;
       background: white !important;
       border: 2px solid #333 !important;
@@ -34,6 +43,7 @@
       box-shadow: 0 0 4px rgba(0,0,0,0.3) !important;
     }
 
+    /* 左侧过滤面板 */
     #filterBar {
       position: absolute;
       top: 80px;
@@ -73,7 +83,6 @@
       border: none;
       cursor: pointer;
     }
-
     #resetBtn:hover {
       background: #0a5660;
     }
@@ -85,14 +94,17 @@
       margin-top: 6px;
     }
 
+    #histContainer {
+      margin-top: 12px;
+    }
     #histogram {
       width: 100%;
-      height: 80px;
       border: 1px solid #ddd;
       border-radius: 4px;
       background: #fafafa;
     }
 
+    /* Legend */
     .legend {
       background: white;
       padding: 10px;
@@ -101,7 +113,6 @@
       font-size: 12px;
       line-height: 18px;
     }
-
     .legend i {
       width: 16px;
       height: 16px;
@@ -110,6 +121,7 @@
       opacity: 0.8;
     }
 
+    /* Loading 覆盖层 */
     .loading-overlay {
       position: fixed;
       inset: 0;
@@ -122,7 +134,6 @@
       font-weight: bold;
       color: #333;
     }
-
     .loading-overlay.hidden {
       display: none;
     }
@@ -131,15 +142,17 @@
 
 <body>
 
+<!-- 年份选择 -->
 <select id="yearFilter">
   <option value="all">All Years</option>
 </select>
 
+<!-- 左侧过滤面板 -->
 <div id="filterBar">
   <label>Metric</label>
   <select id="metricSelect">
     <option value="tmmx_c">Max Temp (°C)</option>
-    <option value="vpd">VPD</option>
+    <option value="vpd">Vapor Pressure Deficit (VPD)</option>
   </select>
 
   <label>Region</label>
@@ -147,314 +160,514 @@
     <option value="all">All regions</option>
   </select>
 
-  <label>State</label>
+  <label>State (by coordinates)</label>
   <select id="stateSelect">
     <option value="all">All states</option>
   </select>
 
-  <label>Value Range</label>
+  <label>Value range</label>
   <div id="rangeText">–</div>
   <input type="range" id="minRange" step="0.1">
   <input type="range" id="maxRange" step="0.1">
 
-  <div id="noDataMsg">No fires match the filters.</div>
+  <div id="noDataMsg">No fires match the current filters.</div>
+
   <button id="resetBtn" type="button">Reset filters</button>
 
-  <label style="margin-top:10px">Distribution</label>
-  <canvas id="histogram"></canvas>
+  <div id="histContainer">
+    <label style="margin-top:8px;">Distribution</label>
+    <canvas id="histogram" width="240" height="80"></canvas>
+  </div>
 </div>
 
+<!-- Loading -->
 <div id="loadingOverlay" class="loading-overlay">
   Loading wildfire data...
 </div>
 
+<!-- 地图容器 -->
 <div id="map"></div>
 
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Turf.js -->
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
 <script>
-var map = L.map("map").setView([39.5, -98.35], 4);
+// ======================== 全局变量 ========================
+var map, fireLayer, riskLayer, statesLayer;
 var allFireData = null;
 var statesGeo = null;
 var stateLayerByName = {};
 
-var fireLayer = L.geoJSON(null, {
-  pointToLayer: (f, latlng) =>
-    L.marker(latlng, {
-      icon: L.icon({
-        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41]
-      })
-    }),
-  onEachFeature: function (f, layer) {
-    var p = f.properties;
+var currentMetric = "tmmx_c";
+var currentRegion = "all";
+var currentYear = "all";
+var currentState = "all";
+var minVal = 0, maxVal = 100;
+
+var histCanvas = document.getElementById("histogram");
+var histCtx = histCanvas.getContext("2d");
+var loadingOverlay = document.getElementById("loadingOverlay");
+
+function setLoading(isLoading) {
+  loadingOverlay.classList.toggle("hidden", !isLoading);
+}
+
+// ======================== 初始化地图 ========================
+map = L.map("map").setView([39.5, -98.35], 4);
+
+var osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+var topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17,
+  attribution: "&copy; OpenTopoMap contributors"
+});
+
+var baseLayers = { "OpenStreetMap": osm, "Topo Map": topo };
+
+// ======================== Risk Zones（底图） ========================
+var riskColors = {
+  "Very High": "#b10026",
+  "High": "#fd8d3c",
+  "Moderate": "#fecc5c",
+  "Low": "#ffffb2"
+};
+
+function styleRisk(feature) {
+  return {
+    color: "#333",
+    weight: 0.5,
+    fillColor: riskColors[feature.properties.risk_level] || "#ccc",
+    fillOpacity: 0.6
+  };
+}
+
+riskLayer = L.geoJSON(null, {
+  style: styleRisk,
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
+    layer.bindPopup(
+      "<b>Risk Level:</b> " + p.risk_level +
+      "<br><b>Fire Days:</b> " + p.n_fire +
+      "<br><b>Total Days:</b> " + p.n_obs +
+      "<br><b>Fire Rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%"
+    );
+  }
+});
+
+fetch("risk_zones.geojson")
+  .then(r => r.json())
+  .then(data => riskLayer.addData(data));
+
+// ======================== Wildfire points ========================
+var fireIcon = L.icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
+
+fireLayer = L.geoJSON(null, {
+  pointToLayer: function(feature, latlng) {
+    return L.marker(latlng, { icon: fireIcon });
+  },
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
     layer.bindPopup(
       "<b>Date:</b> " + p.date +
       "<br><b>Region:</b> " + p.region +
       "<br><b>Season:</b> " + p.season +
-      "<br><b>Temp:</b> " + p.tmmx_c +
+      "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
       "<br><b>VPD:</b> " + p.vpd
     );
   }
-}).addTo(map);
+});
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 18
-}).addTo(map);
-
-
-/* -------------------------
-   LOAD US STATES GEOJSON
-------------------------- */
-var statesLayer = L.geoJSON(null, {
-  style: { color: "#555", weight: 1, fillOpacity: 0 },
+// ======================== States Layer ========================
+statesLayer = L.geoJSON(null, {
+  style: function () {
+    return {
+      color: "#555",
+      weight: 1,
+      fillOpacity: 0
+    };
+  },
   onEachFeature: function (feature, layer) {
     var name = feature.properties.name;
     stateLayerByName[name] = layer;
 
     layer.on("click", function () {
       document.getElementById("stateSelect").value = name;
+      currentState = name;
       highlightState(name);
       applyFilters();
     });
-  }
-}).addTo(map);
 
+    layer.bindPopup("<b>State:</b> " + name);
+  }
+});
+
+// 在线 US states GeoJSON
 fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
   .then(r => r.json())
   .then(data => {
     statesGeo = data;
-    statesLayer.addData(data);
+    statesLayer.addData(statesGeo).addTo(map);
 
-    var sel = document.getElementById("stateSelect");
-    data.features.forEach(f => {
+    var stateSelect = document.getElementById("stateSelect");
+    statesGeo.features.forEach(function(f){
       var opt = document.createElement("option");
       opt.value = f.properties.name;
       opt.textContent = f.properties.name;
-      sel.appendChild(opt);
+      stateSelect.appendChild(opt);
     });
+  })
+  .catch(function(err) {
+    console.error("Error loading US states:", err);
   });
 
 function highlightState(name) {
-  statesLayer.resetStyle();
-  if (name !== "all") {
+  if (statesLayer && statesLayer.resetStyle) {
+    statesLayer.resetStyle();
+  }
+  if (name !== "all" && stateLayerByName[name]) {
     stateLayerByName[name].setStyle({
-      fillColor: "#3388ff",
-      fillOpacity: 0.2
+      fillOpacity: 0.2,
+      fillColor: "#3388ff"
     });
   }
 }
 
-  /* -------------------------
-      LOAD WILDFIRE DATA
-------------------------- */
+// ======================== 读取 wildfire 数据 ========================
+setLoading(true);
+
 fetch("fires_full.geojson")
   .then(r => r.json())
   .then(data => {
     allFireData = data;
 
-    // Fill dropdown for years/regions
-    var years = new Set();
-    var regions = new Set();
-
-    data.features.forEach(f => {
-      years.add(f.properties.year);
-      regions.add(f.properties.region);
+    // 统一 year 类型为字符串，避免 "2017" vs 2017 的类型问题
+    allFireData.features.forEach(function(f) {
+      var p = f.properties;
+      if (p.date) {
+        var d = String(p.date);
+        p.year = d.slice(0, 4);          // '2017'
+      } else if (p.year != null) {
+        p.year = String(p.year);         // 2017 -> '2017'
+      }
     });
 
-    years = [...years].sort();
-    var ysel = document.getElementById("yearFilter");
-    years.forEach(y => {
+    // 构建 year 下拉菜单
+    var years = Array.from(new Set(
+      allFireData.features.map(f => f.properties.year)
+    )).filter(Boolean).sort();
+
+    var yearSelect = document.getElementById("yearFilter");
+    years.forEach(function(y) {
       var opt = document.createElement("option");
       opt.value = y;
       opt.textContent = y;
-      ysel.appendChild(opt);
+      yearSelect.appendChild(opt);
     });
 
-    var rsel = document.getElementById("regionSelect");
-    regions.forEach(r => {
+    // 构建 region 下拉菜单
+    var regions = Array.from(new Set(
+      allFireData.features.map(f => f.properties.region)
+    )).filter(Boolean);
+
+    var regionSelect = document.getElementById("regionSelect");
+    regions.forEach(function(r) {
       var opt = document.createElement("option");
       opt.value = r;
       opt.textContent = r;
-      rsel.appendChild(opt);
+      regionSelect.appendChild(opt);
     });
 
+    // 初始化 slider 范围 + 首次画图
     initializeMetricRange();
     applyFilters();
+
+    setLoading(false);
+  })
+  .catch(function(err) {
+    console.error(err);
+    setLoading(false);
   });
 
+// ======================== 更新 range 文本 ========================
+function updateRangeLabel() {
+  var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "VPD";
+  document.getElementById("rangeText").textContent =
+    name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
+}
 
-/* -------------------------
-    SLIDER RANGE SETUP
-------------------------- */
-var minVal = 0, maxVal = 100;
-var currentMetric = "tmmx_c";
-
+// 按当前 Year + Region + State + Metric 重新算 slider 的 min/max
 function initializeMetricRange() {
   if (!allFireData) return;
-  var vals = allFireData.features.map(f => f.properties[currentMetric]);
-  minVal = Math.min(...vals);
-  maxVal = Math.max(...vals);
 
-  minRange.min = minVal;
-  minRange.max = maxVal;
-  maxRange.min = minVal;
-  maxRange.max = maxVal;
+  var metric = currentMetric;
+  var year = document.getElementById("yearFilter").value;
+  var region = document.getElementById("regionSelect").value;
+  var state = document.getElementById("stateSelect").value;
 
-  minRange.value = minVal;
-  maxRange.value = maxVal;
+  var stateFeature = null;
+  if (state !== "all" && statesGeo) {
+    stateFeature = statesGeo.features.find(function(f){
+      return f.properties.name === state;
+    });
+  }
+
+  var subset = allFireData.features.filter(function(f) {
+    var p = f.properties;
+
+    if (year !== "all" && p.year !== year) return false;
+    if (region !== "all" && state === "all" && p.region !== region) return false;
+
+    if (stateFeature) {
+      if (!f.geometry || f.geometry.type !== "Point") return false;
+      var pt = turf.point(f.geometry.coordinates);
+      if (!turf.booleanPointInPolygon(pt, stateFeature)) return false;
+    }
+    return true;
+  });
+
+  var values = subset
+    .map(function(f) { return parseFloat(f.properties[metric]); })
+    .filter(function(v) { return !isNaN(v); });
+
+  if (!values.length) {
+    values = allFireData.features
+      .map(function(f) { return parseFloat(f.properties[metric]); })
+      .filter(function(v) { return !isNaN(v); });
+  }
+
+  if (!values.length) {
+    minVal = 0;
+    maxVal = 0;
+  } else {
+    minVal = Math.min.apply(null, values);
+    maxVal = Math.max.apply(null, values);
+  }
+
+  var minSlider = document.getElementById("minRange");
+  var maxSlider = document.getElementById("maxRange");
+
+  minSlider.min = minVal;
+  minSlider.max = maxVal;
+  maxSlider.min = minVal;
+  maxSlider.max = maxVal;
+
+  minSlider.value = minVal;
+  maxSlider.value = maxVal;
 
   updateRangeLabel();
 }
 
-function updateRangeLabel() {
-  document.getElementById("rangeText").textContent =
-    currentMetric + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
-}
-
-
-/* -------------------------
-     MAIN FILTER FUNCTION
-------------------------- */
+// 主过滤函数：Year + Region + State + Metric range
 function applyFilters() {
   if (!allFireData) return;
 
-  var selectedYear = yearFilter.value;
-  var selectedRegion = regionSelect.value;
-  var selectedState = stateSelect.value;
+  var selectedYear = document.getElementById("yearFilter").value;
+  var selectedRegion = document.getElementById("regionSelect").value;
+  var selectedState = document.getElementById("stateSelect").value;
+
+  currentYear = selectedYear;
+  currentRegion = selectedRegion;
+  currentState = selectedState;
 
   var stateFeature = null;
   if (selectedState !== "all" && statesGeo) {
-    stateFeature = statesGeo.features.find(
-      f => f.properties.name === selectedState
-    );
+    stateFeature = statesGeo.features.find(function(f){
+      return f.properties.name === selectedState;
+    });
   }
 
   var filtered = {
     type: "FeatureCollection",
-    features: allFireData.features.filter(f => {
+    features: allFireData.features.filter(function(f) {
       var p = f.properties;
 
-      if (selectedYear !== "all" && p.year != selectedYear) return false;
-      if (selectedRegion !== "all" && selectedState === "all" &&
+      // ① 年份
+      if (selectedYear !== "all" && p.year !== selectedYear) return false;
+
+      // ② Region（如果已经选了州，就不用 region 过滤）
+      if (selectedState === "all" && selectedRegion !== "all" &&
           p.region !== selectedRegion) return false;
 
-      if (selectedState !== "all" && stateFeature) {
+      // ③ 州 polygon（最高优先级）
+      if (stateFeature) {
+        if (!f.geometry || f.geometry.type !== "Point") return false;
         var pt = turf.point(f.geometry.coordinates);
         if (!turf.booleanPointInPolygon(pt, stateFeature)) return false;
       }
 
-      var v = p[currentMetric];
-      if (v < minVal || v > maxVal) return false;
+      // ④ metric 范围
+      var val = parseFloat(p[currentMetric]);
+      if (isNaN(val)) return false;
+      if (val < minVal || val > maxVal) return false;
 
       return true;
     })
   };
+
+  var noDataMsg = document.getElementById("noDataMsg");
+  noDataMsg.style.display = filtered.features.length === 0 ? "block" : "none";
 
   fireLayer.clearLayers();
   fireLayer.addData(filtered);
 
   autoZoom(filtered);
   updateHistogram(filtered);
-
-  noDataMsg.style.display =
-    filtered.features.length === 0 ? "block" : "none";
 }
 
-
-/* -------------------------
-         AUTO ZOOM
-------------------------- */
+// 自动 zoom
 function autoZoom(filtered) {
-  if (filtered.features.length === 0) {
+  if (!filtered.features.length) {
     map.setView([39.5, -98.35], 4);
     return;
   }
-  var pts = filtered.features.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]]);
-  var bounds = L.latLngBounds(pts);
+  var coords = [];
+  filtered.features.forEach(function(f) {
+    if (!f.geometry || f.geometry.type !== "Point") return;
+    var c = f.geometry.coordinates;
+    coords.push([c[1], c[0]]);
+  });
+  if (!coords.length) {
+    map.setView([39.5, -98.35], 4);
+    return;
+  }
+  var bounds = L.latLngBounds(coords);
   map.fitBounds(bounds.pad(0.2));
 }
 
-
-/* -------------------------
-        HISTOGRAM
-------------------------- */
-var histCanvas = document.getElementById("histogram");
-var histCtx = histCanvas.getContext("2d");
-
+// histogram
 function updateHistogram(filtered) {
-  histCtx.clearRect(0, 0, histCanvas.width, histCanvas.height);
-  if (!filtered.features.length) return;
+  var features = (filtered && filtered.features.length)
+    ? filtered.features
+    : (allFireData ? allFireData.features : []);
 
-  var vals = filtered.features.map(f => f.properties[currentMetric]);
-  var minV = Math.min(...vals);
-  var maxV = Math.max(...vals);
+  histCtx.clearRect(0, 0, histCanvas.width, histCanvas.height);
+  if (!features.length) return;
+
+  var values = features
+    .map(function(f) { return parseFloat(f.properties[currentMetric]); })
+    .filter(function(v) { return !isNaN(v); });
+
+  if (!values.length) return;
+
+  var minV = Math.min.apply(null, values);
+  var maxV = Math.max.apply(null, values);
+  if (minV === maxV) maxV = minV + 1;
+
   var bins = 10;
   var counts = new Array(bins).fill(0);
   var step = (maxV - minV) / bins;
 
-  vals.forEach(v => {
+  values.forEach(function(v) {
     var idx = Math.floor((v - minV) / step);
-    if (idx === bins) idx--;
+    if (idx < 0) idx = 0;
+    if (idx >= bins) idx = bins - 1;
     counts[idx]++;
   });
 
   var w = histCanvas.width;
   var h = histCanvas.height;
-  var maxC = Math.max(...counts);
+  var maxCount = Math.max.apply(null, counts);
   var barW = w / bins;
 
   histCtx.fillStyle = "#0f7b88";
-  for (let i = 0; i < bins; i++) {
-    let barH = (counts[i] / maxC) * (h - 10);
-    histCtx.fillRect(i * barW, h - barH, barW - 2, barH);
-  }
+  counts.forEach(function(c, i) {
+    var barH = maxCount ? (c / maxCount) * (h - 10) : 0;
+    var x = i * barW + 1;
+    var y = h - barH;
+    histCtx.fillRect(x, y, barW - 2, barH);
+  });
 }
 
-
-/* -------------------------
-     EVENT LISTENERS
-------------------------- */
-metricSelect.addEventListener("change", () => {
-  currentMetric = metricSelect.value;
+// ======================== 事件监听 ========================
+document.getElementById("metricSelect").addEventListener("change", function () {
+  currentMetric = this.value;
   initializeMetricRange();
   applyFilters();
 });
 
-yearFilter.addEventListener("change", applyFilters);
-regionSelect.addEventListener("change", applyFilters);
-
-stateSelect.addEventListener("change", () => {
-  highlightState(stateSelect.value);
+document.getElementById("regionSelect").addEventListener("change", function () {
+  currentRegion = this.value;
+  initializeMetricRange();
   applyFilters();
 });
 
-minRange.addEventListener("input", () => {
-  minVal = parseFloat(minRange.value);
-  if (minVal > maxVal) maxVal = minVal;
+document.getElementById("yearFilter").addEventListener("change", function () {
+  currentYear = this.value;
+  initializeMetricRange();
+  applyFilters();
+});
+
+document.getElementById("stateSelect").addEventListener("change", function () {
+  currentState = this.value;
+  highlightState(currentState);
+  initializeMetricRange();
+  applyFilters();
+});
+
+document.getElementById("minRange").addEventListener("input", function () {
+  minVal = parseFloat(this.value);
+  if (minVal > maxVal) {
+    maxVal = minVal;
+    document.getElementById("maxRange").value = maxVal;
+  }
   updateRangeLabel();
   applyFilters();
 });
 
-maxRange.addEventListener("input", () => {
-  maxVal = parseFloat(maxRange.value);
-  if (maxVal < minVal) minVal = maxVal;
+document.getElementById("maxRange").addEventListener("input", function () {
+  maxVal = parseFloat(this.value);
+  if (maxVal < minVal) {
+    minVal = maxVal;
+    document.getElementById("minRange").value = minVal;
+  }
   updateRangeLabel();
   applyFilters();
 });
 
-resetBtn.addEventListener("click", () => {
-  yearFilter.value = "all";
-  regionSelect.value = "all";
-  stateSelect.value = "all";
-  metricSelect.value = "tmmx_c";
+document.getElementById("resetBtn").addEventListener("click", function () {
+  document.getElementById("yearFilter").value = "all";
+  document.getElementById("regionSelect").value = "all";
+  document.getElementById("metricSelect").value = "tmmx_c";
+  document.getElementById("stateSelect").value = "all";
+
   currentMetric = "tmmx_c";
+  currentRegion = "all";
+  currentYear = "all";
+  currentState = "all";
+
   highlightState("all");
   initializeMetricRange();
   applyFilters();
 });
+
+// ======================== Layer 控制 + Legend ========================
+var overlays = {
+  "Risk Zones": riskLayer,
+  "Wildfires": fireLayer,
+  "States": statesLayer
+};
+L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
+
+var legend = L.control({ position: "bottomright" });
+legend.onAdd = function () {
+  var div = L.DomUtil.create("div", "legend");
+  div.innerHTML += "<b>Risk Levels</b><br>";
+  for (var k in riskColors) {
+    div.innerHTML += '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
+  }
+  return div;
+};
+legend.addTo(map);
+
 </script>
 
 </body>
