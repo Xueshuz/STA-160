@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Wildfire Map</title>
+  <title>Wildfire Explorer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Leaflet CSS -->
@@ -13,60 +13,52 @@
       height: 100%;
       margin: 0;
       padding: 0;
+      font-family: Arial, sans-serif;
     }
+
     #map {
       width: 100%;
       height: 100%;
     }
 
-    /* Year dropdown (top-left) */
+    /* Year Dropdown (avoid overlapping zoom buttons) */
     #yearFilter {
       position: absolute;
-      top: 10px;
-      left: 20px;
+      top: 20px;
+      left: 70px;
       z-index: 9999;
       padding: 6px 10px;
-      font-size: 14px;
       background: white;
-      border-radius: 4px;
-      border: 1px solid #ccc;
+      border: 2px solid #333;
+      border-radius: 6px;
       box-shadow: 0 0 4px rgba(0,0,0,0.3);
     }
 
-    /* Floating filter bar */
+    /* Floating filter panel */
     #filterBar {
       position: absolute;
-      top: 60px;
-      left: 10px;
-      z-index: 9999;
-      padding: 10px 12px;
-      font-size: 13px;
+      top: 80px;
+      left: 20px;
+      width: 280px;
       background: white;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      box-shadow: 0 0 6px rgba(0,0,0,0.3);
-      max-width: 260px;
+      padding: 15px;
+      z-index: 9999;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
     }
 
-    #filterBar label {
+    label {
+      font-weight: bold;
       display: block;
-      margin-bottom: 4px;
-      font-weight: 600;
+      margin-top: 10px;
     }
 
-    #filterBar select {
+    select, input[type="range"] {
       width: 100%;
-      margin-bottom: 6px;
-      padding: 3px;
-      font-size: 13px;
-    }
-
-    #filterBar input[type="range"] {
-      width: 100%;
-    }
-
-    #rangeLabel {
-      font-weight: 500;
+      margin-top: 6px;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid #aaa;
     }
 
     /* Legend */
@@ -75,7 +67,6 @@
       padding: 10px;
       border-radius: 6px;
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
-      font-family: Arial, sans-serif;
       font-size: 12px;
       line-height: 18px;
     }
@@ -96,55 +87,53 @@
   <option value="all">All Years</option>
 </select>
 
-<!-- Floating filter controls -->
+<!-- Filter Panel -->
 <div id="filterBar">
-  <label for="metricSelect">Metric</label>
+  <label>Metric</label>
   <select id="metricSelect">
     <option value="tmmx_c">Max Temp (°C)</option>
     <option value="vpd">Vapor Pressure Deficit (VPD)</option>
   </select>
 
-  <label for="regionSelect">Region</label>
+  <label>Region</label>
   <select id="regionSelect">
     <option value="all">All regions</option>
   </select>
 
-  <label>Value range</label>
-  <div id="rangeLabel">—</div>
+  <label id="rangeLabel">Value range</label>
+  <div id="rangeText">–</div>
   <input type="range" id="minRange" step="0.1">
   <input type="range" id="maxRange" step="0.1">
 </div>
 
-<!-- Map container -->
+<!-- Map -->
 <div id="map"></div>
 
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-
-</body>
-
-
 <script>
-// -------------------- 1. Initialize Map --------------------
+// ======================================================
+// 1. Initialize Map
+// ======================================================
 var map = L.map("map").setView([39.5, -98.35], 4);
 
-var osm = L.tileLayer(
-  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }
-).addTo(map);
+var osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
 
-var topo = L.tileLayer(
-  "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-  { maxZoom: 17, attribution: "&copy; OpenTopoMap" }
-);
+var topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17,
+  attribution: "&copy; OpenTopoMap contributors"
+});
 
-var baseLayers = {
-  "OpenStreetMap": osm,
-  "Topo Map": topo
-};
+var baseLayers = { "OpenStreetMap": osm, "Topo Map": topo };
 
-// -------------------- 2. Risk Zones --------------------
+
+// ======================================================
+// 2. Risk Zone Colors
+// ======================================================
 var riskColors = {
   "Very High": "#b10026",
   "High": "#fd8d3c",
@@ -174,240 +163,152 @@ var riskLayer = L.geoJSON(null, {
   }
 });
 
-// Load risk zones
 fetch("risk_zones.geojson")
   .then(r => r.json())
   .then(data => riskLayer.addData(data));
 
-// -------------------- 3. Fire Points --------------------
+
+// ======================================================
+// 3. Fire Points Layer
+// ======================================================
 var fireIcon = L.icon({
   iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
   iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34]
+  iconAnchor: [12, 41]
 });
 
 var fireLayer = L.geoJSON(null, {
-  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon }),
-  onEachFeature: function (feature, layer) {
-    var p = feature.properties;
-    layer.bindPopup(
-      "<b>Date:</b> " + p.date +
-      "<br><b>Year:</b> " + p.year +
-      "<br><b>Region:</b> " + p.region +
-      "<br><b>Season:</b> " + p.season +
-      "<br><b>Temp (°C):</b> " + p.tmmx_c +
-      "<br><b>VPD:</b> " + p.vpd
-    );
-  }
+  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon })
 });
 
-var allFireData = null;
-var metricStats = {};  // { metric: {min, max} }
+var allFireData;
+var currentMetric = "tmmx_c";
+var currentRegion = "all";
+var minVal = 0, maxVal = 100;
 
-// -------------------- 4. Load Fire Dataset --------------------
+
+// ======================================================
+// 4. Load Fire Data
+// ======================================================
 fetch("fires_full.geojson")
   .then(r => r.json())
   .then(data => {
-    // add year field
+    allFireData = data;
+
+    // Extract year
     data.features.forEach(f => {
       f.properties.year = String(f.properties.date).slice(0, 4);
     });
 
-    allFireData = data;
-
-    // ----- Build year dropdown -----
-    var years = [...new Set(
-      data.features.map(f => f.properties.year).filter(Boolean)
-    )];
-    years.sort();
-    var yearSel = document.getElementById("yearFilter");
+    // Build year dropdown
+    var years = [...new Set(data.features.map(f => f.properties.year))].sort();
+    var yearSelect = document.getElementById("yearFilter");
     years.forEach(y => {
       var opt = document.createElement("option");
       opt.value = y;
       opt.textContent = y;
-      yearSel.appendChild(opt);
+      yearSelect.appendChild(opt);
     });
 
-    // ----- Build region dropdown -----
-    var regions = [...new Set(
-      data.features.map(f => f.properties.region).filter(Boolean)
-    )];
-    regions.sort();
-    var regionSel = document.getElementById("regionSelect");
-    regions.forEach(rg => {
+    // Build region dropdown
+    var regions = [...new Set(data.features.map(f => f.properties.region))];
+    var regionSelect = document.getElementById("regionSelect");
+    regions.forEach(r => {
+      if (!r) return;
       var opt = document.createElement("option");
-      opt.value = rg;
-      opt.textContent = rg;
-      regionSel.appendChild(opt);
+      opt.value = r;
+      opt.textContent = r;
+      regionSelect.appendChild(opt);
     });
 
-    // ----- Compute metric ranges -----
-    ["tmmx_c", "vpd"].forEach(m => {
-      var vals = data.features
-        .map(f => parseFloat(f.properties[m]))
-        .filter(v => !isNaN(v));
-      if (vals.length > 0) {
-        metricStats[m] = {
-          min: Math.min(...vals),
-          max: Math.max(...vals)
-        };
-      }
-    });
-
-    // Initialize slider with default metric
-    initMetricControls();
-
-    // Initial draw
-    applyFilters();
+    fireLayer.addData(data);
   });
 
-// -------------------- 5. Filtering Logic --------------------
-function initMetricControls() {
-  var metricSel = document.getElementById("metricSelect");
-  var metric = metricSel.value;
-  var stats = metricStats[metric];
 
-  var minRange = document.getElementById("minRange");
-  var maxRange = document.getElementById("maxRange");
-
-  if (!stats) {
-    minRange.disabled = true;
-    maxRange.disabled = true;
-    document.getElementById("rangeLabel").textContent = "No data for this metric.";
-    return;
-  }
-
-  minRange.disabled = false;
-  maxRange.disabled = false;
-
-  var minVal = stats.min;
-  var maxVal = stats.max;
-
-  // set slider bounds
-  minRange.min = minVal;
-  minRange.max = maxVal;
-  maxRange.min = minVal;
-  maxRange.max = maxVal;
-
-  // set initial slider positions (full range)
-  minRange.value = minVal;
-  maxRange.value = maxVal;
-
-  updateRangeLabel();
-}
-
-function updateRangeLabel() {
-  var metric = document.getElementById("metricSelect").value;
-  var minRange = document.getElementById("minRange");
-  var maxRange = document.getElementById("maxRange");
-  var minVal = parseFloat(minRange.value);
-  var maxVal = parseFloat(maxRange.value);
-
-  var label = metric === "tmmx_c" ? "Temp (°C)" :
-              metric === "vpd" ? "VPD" : metric;
-
-  document.getElementById("rangeLabel").textContent =
-    label + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
-}
-
+// ======================================================
+// 5. Filtering Logic
+// ======================================================
 function applyFilters() {
   if (!allFireData) return;
 
-  var yearSel = document.getElementById("yearFilter").value;
-  var metric = document.getElementById("metricSelect").value;
-  var regionSel = document.getElementById("regionSelect").value;
-  var minRange = document.getElementById("minRange");
-  var maxRange = document.getElementById("maxRange");
+  var selectedYear = document.getElementById("yearFilter").value;
 
-  var stats = metricStats[metric];
-  var useMetric = !!stats;
-
-  var minVal = useMetric ? parseFloat(minRange.value) : null;
-  var maxVal = useMetric ? parseFloat(maxRange.value) : null;
-
-  var feats = allFireData.features.filter(f => {
-    var p = f.properties;
-
-    // Year filter
-    if (yearSel !== "all" && p.year !== yearSel) return false;
-
-    // Region filter
-    if (regionSel !== "all" && String(p.region) !== regionSel) return false;
-
-    // Metric range filter
-    if (useMetric) {
-      var v = parseFloat(p[metric]);
-      if (isNaN(v)) return false;
-      if (v < minVal || v > maxVal) return false;
-    }
-
-    return true;
-  });
-
-  var filteredFC = {
+  var filtered = {
     type: "FeatureCollection",
-    features: feats
+    features: allFireData.features.filter(f => {
+      var p = f.properties;
+
+      if (selectedYear !== "all" && p.year !== selectedYear) return false;
+      if (currentRegion !== "all" && p.region !== currentRegion) return false;
+
+      var val = parseFloat(p[currentMetric]);
+      return val >= minVal && val <= maxVal;
+    })
   };
 
   fireLayer.clearLayers();
-  fireLayer.addData(filteredFC);
+  fireLayer.addData(filtered);
 }
 
-// -------------------- 6. Event Listeners --------------------
-document.getElementById("yearFilter").addEventListener("change", function () {
-  applyFilters();
-});
 
+// Metric selection
 document.getElementById("metricSelect").addEventListener("change", function () {
-  initMetricControls();
+  currentMetric = this.value;
+
+  // update min-max range
+  var values = allFireData.features.map(f => parseFloat(f.properties[currentMetric]));
+  minVal = Math.min(...values);
+  maxVal = Math.max(...values);
+
+  document.getElementById("minRange").min = minVal;
+  document.getElementById("minRange").max = maxVal;
+  document.getElementById("maxRange").min = minVal;
+  document.getElementById("maxRange").max = maxVal;
+
+  document.getElementById("minRange").value = minVal;
+  document.getElementById("maxRange").value = maxVal;
+
+  document.getElementById("rangeText").textContent =
+    `${currentMetric.toUpperCase()}: ${minVal.toFixed(1)} – ${maxVal.toFixed(1)}`;
+
   applyFilters();
 });
 
 document.getElementById("regionSelect").addEventListener("change", function () {
+  currentRegion = this.value;
   applyFilters();
 });
 
+document.getElementById("yearFilter").addEventListener("change", applyFilters);
+
 document.getElementById("minRange").addEventListener("input", function () {
-  var minRange = document.getElementById("minRange");
-  var maxRange = document.getElementById("maxRange");
-  if (parseFloat(minRange.value) > parseFloat(maxRange.value)) {
-    maxRange.value = minRange.value;
-  }
-  updateRangeLabel();
+  minVal = parseFloat(this.value);
   applyFilters();
 });
 
 document.getElementById("maxRange").addEventListener("input", function () {
-  var minRange = document.getElementById("minRange");
-  var maxRange = document.getElementById("maxRange");
-  if (parseFloat(maxRange.value) < parseFloat(minRange.value)) {
-    minRange.value = maxRange.value;
-  }
-  updateRangeLabel();
+  maxVal = parseFloat(this.value);
   applyFilters();
 });
 
-// -------------------- 7. Layer Controls & Legend --------------------
-L.control.layers(
-  baseLayers,
-  { "Risk Zones": riskLayer, "Filtered Fires": fireLayer },
-  { collapsed: false }
-).addTo(map);
+
+// ======================================================
+// 6. Layer Controls + Legend
+// ======================================================
+var overlays = { "Risk Zones": riskLayer, "Wildfires": fireLayer };
+L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
 
 var legend = L.control({ position: "bottomright" });
-
 legend.onAdd = function () {
   var div = L.DomUtil.create("div", "legend");
   div.innerHTML += "<b>Risk Levels</b><br>";
   for (var k in riskColors) {
-    div.innerHTML +=
-      '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
+    div.innerHTML += `<i style="background:${riskColors[k]}"></i> ${k}<br>`;
   }
   return div;
 };
-
 legend.addTo(map);
+
 </script>
 
 </body>
