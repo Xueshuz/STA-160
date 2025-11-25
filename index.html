@@ -280,7 +280,7 @@ fireLayer = L.geoJSON(null, {
 // ======================== 读取 wildfire 数据 ========================
 setLoading(true);
 
-fetch("fires_recent.geojson")   // 现在用的是最近两年的 5000 个点
+fetch("fires_full.geojson")  
   .then(r => r.json())
   .then(data => {
     allFireData = data;
