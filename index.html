@@ -5,7 +5,7 @@
   <title>Wildfire Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Leaflet CSS -->
+  <!-- Leaflet CSS（无 integrity） -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -23,10 +23,10 @@
       height: 100%;
     }
 
-    /* Dropdown styling */
-   #yearFilter {
+    /* Year dropdown */
+    #yearFilter {
       position: absolute;
-      top: 70px;         
+      top: 70px;          /* 放在缩放按钮下面一点，更明显 */
       left: 10px;
       z-index: 9999;
       padding: 8px 12px;
@@ -37,8 +37,7 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
     }
 
-
-    /* Legend styling */
+    /* Legend */
     .legend {
       background: white;
       padding: 10px;
@@ -68,14 +67,13 @@
 <!-- Map container -->
 <div id="map"></div>
 
-<!-- Leaflet JS -->
+<!-- Leaflet JS（无 integrity） -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 // -------------------- 1. Initialize the map --------------------
 var map = L.map("map").setView([39.5, -98.35], 4);
 
-// Base layers
 var osm = L.tileLayer(
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {
@@ -115,7 +113,6 @@ function styleRisk(feature) {
   };
 }
 
-// Risk layer
 var riskLayer = L.geoJSON(null, {
   style: styleRisk,
   onEachFeature: function (feature, layer) {
@@ -129,14 +126,14 @@ var riskLayer = L.geoJSON(null, {
   }
 });
 
-// Fetch Risk Zones
+// Load risk zones
 fetch("risk_zones.geojson")
   .then(r => r.json())
   .then(data => {
     riskLayer.addData(data);
   });
 
-// -------------------- 3. Recent Fires Layer (with new red icon) --------------------
+// -------------------- 3. Recent Fires (red markers) --------------------
 var fireIcon = L.icon({
   iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
   iconSize: [25, 41],
@@ -161,20 +158,25 @@ var fireLayer = L.geoJSON(null, {
   }
 });
 
-// Store full fire dataset for filtering
-var allFireData;
+var allFireData;   // full dataset for filtering
 
-// Fetch fire points
+// Load fire points
 fetch("fires_recent.geojson")
   .then(r => r.json())
   .then(data => {
+    // 1) 从 date 计算 year 字段
+    data.features.forEach(f => {
+      var d = f.properties.date;       // e.g. "2017-01-31"
+      var y = new Date(d).getFullYear();
+      f.properties.year = y;
+    });
+
     allFireData = data;
 
-    // Extract all years
+    // 2) 构建年份列表
     var years = [...new Set(data.features.map(f => f.properties.year))];
     years.sort();
 
-    // Populate dropdown
     var dropdown = document.getElementById("yearFilter");
     years.forEach(y => {
       var opt = document.createElement("option");
@@ -183,6 +185,7 @@ fetch("fires_recent.geojson")
       dropdown.appendChild(opt);
     });
 
+    // 3) 初始显示所有点
     fireLayer.addData(data);
   });
 
@@ -191,13 +194,15 @@ document.getElementById("yearFilter").addEventListener("change", function () {
   var selected = this.value;
   fireLayer.clearLayers();
 
+  if (!allFireData) return;  // 数据还没加载完就点了的话，直接返回
+
   if (selected === "all") {
     fireLayer.addData(allFireData);
   } else {
     var filtered = {
       type: "FeatureCollection",
       features: allFireData.features.filter(
-        f => f.properties.year == selected
+        f => String(f.properties.year) === String(selected)
       )
     };
     fireLayer.addData(filtered);
