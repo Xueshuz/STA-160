@@ -1,3 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Wildfire Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet CSS（无 integrity） -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Year dropdown */
+    #yearFilter {
+      position: absolute;
+      top: 70px;          /* 放在缩放按钮下面一点，更明显 */
+      left: 10px;
+      z-index: 9999;
+      padding: 8px 12px;
+      font-size: 14px;
+      background: white;
+      border: 2px solid #333;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+    }
+
+    /* Legend */
+    .legend {
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      line-height: 18px;
+    }
+    .legend i {
+      width: 16px;
+      height: 16px;
+      float: left;
+      margin-right: 6px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Year Dropdown -->
+<select id="yearFilter">
+  <option value="all">All Years</option>
+</select>
+
+<!-- Map container -->
+<div id="map"></div>
+
+<!-- Leaflet JS（无 integrity） -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
 <script>
 // -------------------- 1. Initialize the map --------------------
 var map = L.map("map").setView([39.5, -98.35], 4);
