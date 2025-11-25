@@ -21,148 +21,225 @@
     }
 
     .legend {
-      background: white;
-      padding: 10px;
-      border-radius: 4px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.3);
-      line-height: 1.4em;
-      font-family: sans-serif;
-      font-size: 13px;
+      background: white;<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Wildfire Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
     }
 
+    /* Year dropdown */
+    #yearFilter {
+      position: absolute;
+      top: 70px;
+      left: 10px;
+      z-index: 9999;
+      padding: 8px 12px;
+      font-size: 14px;
+      background: white;
+      border: 2px solid #333;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+    }
+
+    /* Legend */
+    .legend {
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      line-height: 18px;
+    }
     .legend i {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       float: left;
       margin-right: 6px;
       opacity: 0.8;
     }
   </style>
 </head>
+
 <body>
+
+<!-- Year Dropdown -->
+<select id="yearFilter">
+  <option value="all">All Years</option>
+</select>
+
+<!-- Map container -->
 <div id="map"></div>
 
 <!-- Leaflet JS -->
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-o9N1j7kGStbG3o7mG8+EJ2N1n00p1r6tAEFwA6C4F6A="
-  crossorigin="">
-</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-  // ---------- 1. 初始化地图 ----------
-  var map = L.map('map').setView([39.5, -98.35], 4); // 中心放美国
+// -------------------- 1. Initialize Map --------------------
+var map = L.map("map").setView([39.5, -98.35], 4);
 
-  // 底图：可以选 OSM / Satellite 等
-  var osm = L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {
-      maxZoom: 18,
-      attribution: '&copy; OpenStreetMap contributors'
-    }
-  ).addTo(map);
+var osm = L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }
+).addTo(map);
 
-  var topo = L.tileLayer(
-    'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    {
-      maxZoom: 17,
-      attribution: '&copy; OpenTopoMap, &copy; OpenStreetMap contributors'
-    }
-  );
+var topo = L.tileLayer(
+  "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+  { maxZoom: 17, attribution: "&copy; OpenTopoMap" }
+);
 
-  var baseLayers = {
-    "OpenStreetMap": osm,
-    "Topo": topo
+var baseLayers = {
+  "OpenStreetMap": osm,
+  "Topo Map": topo
+};
+
+// -------------------- 2. Risk Zones --------------------
+var riskColors = {
+  "Very High": "#b10026",
+  "High": "#fd8d3c",
+  "Moderate": "#fecc5c",
+  "Low": "#ffffb2"
+};
+
+function styleRisk(feature) {
+  return {
+    color: "#333",
+    weight: 0.5,
+    fillColor: riskColors[feature.properties.risk_level] || "#ccc",
+    fillOpacity: 0.6
   };
+}
 
-  // ---------- 2. 风险图层（黄色大区域） ----------
-  var riskColors = {
-    "Very High": "#b10026",
-    "High": "#fd8d3c",
-    "Moderate": "#fecc5c",
-    "Low": "#ffffb2"
-  };
-
-  function styleRisk(feature) {
-    var lvl = feature.properties.risk_level;
-    return {
-      color: "#555",
-      weight: 0.3,
-      fillColor: riskColors[lvl] || "#cccccc",
-      fillOpacity: 0.5
-    };
+var riskLayer = L.geoJSON(null, {
+  style: styleRisk,
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
+    layer.bindPopup(
+      "<b>Risk Level:</b> " + p.risk_level +
+      "<br><b>Fire Days:</b> " + p.n_fire +
+      "<br><b>Total Days:</b> " + p.n_obs +
+      "<br><b>Fire Rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%"
+    );
   }
+});
 
-  var riskLayer = L.geoJSON(null, {
-    style: styleRisk,
-    onEachFeature: function (feature, layer) {
-      var p = feature.properties;
-      var html = "<b>Risk level:</b> " + p.risk_level +
-                 "<br><b>Fire days:</b> " + p.n_fire +
-                 "<br><b>Total days:</b> " + p.n_obs +
-                 "<br><b>Fire rate:</b> " + (p.risk_rate * 100).toFixed(1) + "%";
-      layer.bindPopup(html);
-    }
-  });
+// Load risk zones
+fetch("risk_zones.geojson")
+  .then(r => r.json())
+  .then(data => riskLayer.addData(data));
 
-  fetch("risk_zones.geojson")
-    .then(function(response) { return response.json(); })
-    .then(function(data) { riskLayer.addTo(map); });
+// -------------------- 3. Fire Points --------------------
+var fireIcon = L.icon({
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34]
+});
 
+var fireLayer = L.geoJSON(null, {
+  pointToLayer: (feature, latlng) => L.marker(latlng, { icon: fireIcon }),
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties;
+    layer.bindPopup(
+      "<b>Date:</b> " + p.date +
+      "<br><b>Year:</b> " + p.year +
+      "<br><b>Region:</b> " + p.region +
+      "<br><b>Season:</b> " + p.season +
+      "<br><b>Temp (°C):</b> " + p.tmmx_c +
+      "<br><b>VPD:</b> " + p.vpd
+    );
+  }
+});
 
-  // ---------- 3. 最近火点图层（小火苗图标） ----------
-  // 你可以自己放一个小图标 fire-icon.png 到同一目录
-  var fireIcon = L.icon({
-    iconUrl: "https://cdn-icons-png.flaticon.com/512/482/482988.png", // 或者换成本地文件 fire-icon.png
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
-  });
+var allFireData = null;
 
-  var firesLayer = L.geoJSON(null, {
-    pointToLayer: function (feature, latlng) {
-      return L.marker(latlng, {icon: fireIcon});
-    },
-    onEachFeature: function (feature, layer) {
-      var p = feature.properties;
-      var html = "<b>Date:</b> " + p.date +
-                 "<br><b>Region:</b> " + p.region +
-                 "<br><b>Season:</b> " + p.season +
-                 "<br><b>Tmax (°C):</b> " + p.tmmx_c.toFixed(1) +
-                 "<br><b>VPD:</b> " + p.vpd.toFixed(2);
-      layer.bindPopup(html);
-    }
-  });
+// Load fire dataset
+fetch("fires_full.geojson")
+  .then(r => r.json())
+  .then(data => {
 
-  fetch("fires_recent.geojson")
-    .then(function(response) { return response.json(); })
-    .then(function(data) { firesLayer.addData(data); });
-
-
-  // ---------- 4. 图层控制（像 CAL FIRE 下方那一排） ----------
-  var overlayLayers = {
-    "Risk Zones": riskLayer,
-    "Recent Fires": firesLayer
-  };
-
-  L.control.layers(baseLayers, overlayLayers, {collapsed: false}).addTo(map);
-
-  // ---------- 5. 图例 ----------
-  var legend = L.control({position: 'bottomright'});
-
-  legend.onAdd = function (map) {
-    var div = L.DomUtil.create('div', 'legend');
-    div.innerHTML += "<b>Wildfire Risk</b><br>";
-    var levels = ["Very High", "High", "Moderate", "Low"];
-    levels.forEach(function (lvl) {
-      div.innerHTML +=
-        '<i style="background:' + (riskColors[lvl] || '#ccc') + '"></i> ' +
-        lvl + "<br>";
+    // Add year field from date
+    data.features.forEach(f => {
+      f.properties.year = String(f.properties.date).slice(0, 4);
     });
-    return div;
-  };
 
-  legend.addTo(map);
+    allFireData = data;
 
+    // Populate year dropdown
+    var years = [...new Set(
+      data.features.map(f => f.properties.year).filter(Boolean)
+    )];
+    years.sort();
+
+    var dropdown = document.getElementById("yearFilter");
+    years.forEach(y => {
+      var opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      dropdown.appendChild(opt);
+    });
+
+    // Default show all
+    fireLayer.addData(data);
+  });
+
+// -------------------- 4. Year Filter Logic --------------------
+document.getElementById("yearFilter").addEventListener("change", function () {
+  if (!allFireData) return;
+
+  var selected = this.value;
+  fireLayer.clearLayers();
+
+  if (selected === "all") {
+    fireLayer.addData(allFireData);
+  } else {
+    var filtered = {
+      type: "FeatureCollection",
+      features: allFireData.features.filter(
+        f => f.properties.year === selected
+      )
+    };
+    fireLayer.addData(filtered);
+  }
+});
+
+// -------------------- 5. Layer Controls --------------------
+L.control.layers(
+  baseLayers,
+  { "Risk Zones": riskLayer, "Recent Fires": fireLayer },
+  { collapsed: false }
+).addTo(map);
+
+// -------------------- 6. Legend --------------------
+var legend = L.control({ position: "bottomright" });
+
+legend.onAdd = function () {
+  var div = L.DomUtil.create("div", "legend");
+  div.innerHTML += "<b>Risk Levels</b><br>";
+  for (var k in riskColors) {
+    div.innerHTML +=
+      `<i style="background:${riskColors[k]}"></i> ${k}<br>`;
+  }
+  return div;
+};
+
+legend.addTo(map);
 </script>
+
 </body>
 </html>
