@@ -19,18 +19,54 @@
       height: 100%;
     }
 
-    /* Year dropdown */
+    /* Year dropdown (top-left) */
     #yearFilter {
       position: absolute;
-      top: 70px;
+      top: 10px;
       left: 10px;
       z-index: 9999;
-      padding: 8px 12px;
+      padding: 6px 10px;
       font-size: 14px;
       background: white;
-      border: 2px solid #333;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+
+    /* Floating filter bar */
+    #filterBar {
+      position: absolute;
+      top: 60px;
+      left: 10px;
+      z-index: 9999;
+      padding: 10px 12px;
+      font-size: 13px;
+      background: white;
       border-radius: 6px;
+      border: 1px solid #ccc;
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      max-width: 260px;
+    }
+
+    #filterBar label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    #filterBar select {
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 3px;
+      font-size: 13px;
+    }
+
+    #filterBar input[type="range"] {
+      width: 100%;
+    }
+
+    #rangeLabel {
+      font-weight: 500;
     }
 
     /* Legend */
@@ -59,6 +95,25 @@
 <select id="yearFilter">
   <option value="all">All Years</option>
 </select>
+
+<!-- Floating filter controls -->
+<div id="filterBar">
+  <label for="metricSelect">Metric</label>
+  <select id="metricSelect">
+    <option value="tmmx_c">Max Temp (°C)</option>
+    <option value="vpd">Vapor Pressure Deficit (VPD)</option>
+  </select>
+
+  <label for="regionSelect">Region</label>
+  <select id="regionSelect">
+    <option value="all">All regions</option>
+  </select>
+
+  <label>Value range</label>
+  <div id="rangeLabel">—</div>
+  <input type="range" id="minRange" step="0.1">
+  <input type="range" id="maxRange" step="0.1">
+</div>
 
 <!-- Map container -->
 <div id="map"></div>
@@ -144,65 +199,198 @@ var fireLayer = L.geoJSON(null, {
 });
 
 var allFireData = null;
+var metricStats = {};  // { metric: {min, max} }
 
-// Load fire dataset
+// -------------------- 4. Load Fire Dataset --------------------
 fetch("fires_full.geojson")
   .then(r => r.json())
   .then(data => {
-
-    // Add year field from date
+    // add year field
     data.features.forEach(f => {
       f.properties.year = String(f.properties.date).slice(0, 4);
     });
 
     allFireData = data;
 
-    // Populate year dropdown
+    // ----- Build year dropdown -----
     var years = [...new Set(
       data.features.map(f => f.properties.year).filter(Boolean)
     )];
     years.sort();
-
-    var dropdown = document.getElementById("yearFilter");
+    var yearSel = document.getElementById("yearFilter");
     years.forEach(y => {
       var opt = document.createElement("option");
       opt.value = y;
       opt.textContent = y;
-      dropdown.appendChild(opt);
+      yearSel.appendChild(opt);
     });
 
-    // Default show all
-    fireLayer.addData(data);
+    // ----- Build region dropdown -----
+    var regions = [...new Set(
+      data.features.map(f => f.properties.region).filter(Boolean)
+    )];
+    regions.sort();
+    var regionSel = document.getElementById("regionSelect");
+    regions.forEach(rg => {
+      var opt = document.createElement("option");
+      opt.value = rg;
+      opt.textContent = rg;
+      regionSel.appendChild(opt);
+    });
+
+    // ----- Compute metric ranges -----
+    ["tmmx_c", "vpd"].forEach(m => {
+      var vals = data.features
+        .map(f => parseFloat(f.properties[m]))
+        .filter(v => !isNaN(v));
+      if (vals.length > 0) {
+        metricStats[m] = {
+          min: Math.min(...vals),
+          max: Math.max(...vals)
+        };
+      }
+    });
+
+    // Initialize slider with default metric
+    initMetricControls();
+
+    // Initial draw
+    applyFilters();
   });
 
-// -------------------- 4. Year Filter Logic --------------------
-document.getElementById("yearFilter").addEventListener("change", function () {
+// -------------------- 5. Filtering Logic --------------------
+function initMetricControls() {
+  var metricSel = document.getElementById("metricSelect");
+  var metric = metricSel.value;
+  var stats = metricStats[metric];
+
+  var minRange = document.getElementById("minRange");
+  var maxRange = document.getElementById("maxRange");
+
+  if (!stats) {
+    minRange.disabled = true;
+    maxRange.disabled = true;
+    document.getElementById("rangeLabel").textContent = "No data for this metric.";
+    return;
+  }
+
+  minRange.disabled = false;
+  maxRange.disabled = false;
+
+  var minVal = stats.min;
+  var maxVal = stats.max;
+
+  // set slider bounds
+  minRange.min = minVal;
+  minRange.max = maxVal;
+  maxRange.min = minVal;
+  maxRange.max = maxVal;
+
+  // set initial slider positions (full range)
+  minRange.value = minVal;
+  maxRange.value = maxVal;
+
+  updateRangeLabel();
+}
+
+function updateRangeLabel() {
+  var metric = document.getElementById("metricSelect").value;
+  var minRange = document.getElementById("minRange");
+  var maxRange = document.getElementById("maxRange");
+  var minVal = parseFloat(minRange.value);
+  var maxVal = parseFloat(maxRange.value);
+
+  var label = metric === "tmmx_c" ? "Temp (°C)" :
+              metric === "vpd" ? "VPD" : metric;
+
+  document.getElementById("rangeLabel").textContent =
+    label + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
+}
+
+function applyFilters() {
   if (!allFireData) return;
 
-  var selected = this.value;
-  fireLayer.clearLayers();
+  var yearSel = document.getElementById("yearFilter").value;
+  var metric = document.getElementById("metricSelect").value;
+  var regionSel = document.getElementById("regionSelect").value;
+  var minRange = document.getElementById("minRange");
+  var maxRange = document.getElementById("maxRange");
 
-  if (selected === "all") {
-    fireLayer.addData(allFireData);
-  } else {
-    var filtered = {
-      type: "FeatureCollection",
-      features: allFireData.features.filter(
-        f => f.properties.year === selected
-      )
-    };
-    fireLayer.addData(filtered);
-  }
+  var stats = metricStats[metric];
+  var useMetric = !!stats;
+
+  var minVal = useMetric ? parseFloat(minRange.value) : null;
+  var maxVal = useMetric ? parseFloat(maxRange.value) : null;
+
+  var feats = allFireData.features.filter(f => {
+    var p = f.properties;
+
+    // Year filter
+    if (yearSel !== "all" && p.year !== yearSel) return false;
+
+    // Region filter
+    if (regionSel !== "all" && String(p.region) !== regionSel) return false;
+
+    // Metric range filter
+    if (useMetric) {
+      var v = parseFloat(p[metric]);
+      if (isNaN(v)) return false;
+      if (v < minVal || v > maxVal) return false;
+    }
+
+    return true;
+  });
+
+  var filteredFC = {
+    type: "FeatureCollection",
+    features: feats
+  };
+
+  fireLayer.clearLayers();
+  fireLayer.addData(filteredFC);
+}
+
+// -------------------- 6. Event Listeners --------------------
+document.getElementById("yearFilter").addEventListener("change", function () {
+  applyFilters();
 });
 
-// -------------------- 5. Layer Controls --------------------
+document.getElementById("metricSelect").addEventListener("change", function () {
+  initMetricControls();
+  applyFilters();
+});
+
+document.getElementById("regionSelect").addEventListener("change", function () {
+  applyFilters();
+});
+
+document.getElementById("minRange").addEventListener("input", function () {
+  var minRange = document.getElementById("minRange");
+  var maxRange = document.getElementById("maxRange");
+  if (parseFloat(minRange.value) > parseFloat(maxRange.value)) {
+    maxRange.value = minRange.value;
+  }
+  updateRangeLabel();
+  applyFilters();
+});
+
+document.getElementById("maxRange").addEventListener("input", function () {
+  var minRange = document.getElementById("minRange");
+  var maxRange = document.getElementById("maxRange");
+  if (parseFloat(maxRange.value) < parseFloat(minRange.value)) {
+    minRange.value = maxRange.value;
+  }
+  updateRangeLabel();
+  applyFilters();
+});
+
+// -------------------- 7. Layer Controls & Legend --------------------
 L.control.layers(
   baseLayers,
-  { "Risk Zones": riskLayer, "Recent Fires": fireLayer },
+  { "Risk Zones": riskLayer, "Filtered Fires": fireLayer },
   { collapsed: false }
 ).addTo(map);
 
-// -------------------- 6. Legend --------------------
 var legend = L.control({ position: "bottomright" });
 
 legend.onAdd = function () {
@@ -210,7 +398,7 @@ legend.onAdd = function () {
   div.innerHTML += "<b>Risk Levels</b><br>";
   for (var k in riskColors) {
     div.innerHTML +=
-      `<i style="background:${riskColors[k]}"></i> ${k}<br>`;
+      '<i style="background:' + riskColors[k] + ';"></i> ' + k + "<br>";
   }
   return div;
 };
