@@ -487,9 +487,9 @@ function applyFilters() {
 
   var stateFeature = null;
   if (selectedState !== "all" && statesGeo) {
-    stateFeature = statesGeo.features.find(function(f){
-      return f.properties.name === selectedState;
-    });
+    stateFeature = statesGeo.features.find(
+      f => f.properties.name === selectedState
+    );
   }
 
   var filtered = {
@@ -497,16 +497,22 @@ function applyFilters() {
     features: allFireData.features.filter(function(f) {
       var p = f.properties;
 
+      // ① 年份筛选
       if (selectedYear !== "all" && p.year !== selectedYear) return false;
-      if (selectedRegion !== "all" && p.region !== selectedRegion) return false;
 
-      // 州 polygon 过滤
+      // ② Region 筛选（但是州优先）
+      if (selectedState === "all") {
+        if (selectedRegion !== "all" && p.region !== selectedRegion) return false;
+      }
+
+      // ③ 州 polygon 筛选（最高优先级）
       if (stateFeature) {
         if (!f.geometry || f.geometry.type !== "Point") return false;
         var pt = turf.point(f.geometry.coordinates);
         if (!turf.booleanPointInPolygon(pt, stateFeature)) return false;
       }
 
+      // ④ metric 值筛选
       var val = parseFloat(p[currentMetric]);
       if (isNaN(val)) return false;
       if (val < minVal || val > maxVal) return false;
@@ -517,18 +523,14 @@ function applyFilters() {
 
   // “没有数据” 提示
   var noDataMsg = document.getElementById("noDataMsg");
-  if (filtered.features.length === 0) {
-    noDataMsg.style.display = "block";
-  } else {
-    noDataMsg.style.display = "none";
-  }
+  noDataMsg.style.display = filtered.features.length === 0 ? "block" : "none";
 
   fireLayer.clearLayers();
   fireLayer.addData(filtered);
-
   autoZoom(filtered);
   updateHistogram(filtered);
 }
+
 
 // 自动 zoom 到当前点
 function autoZoom(filtered) {
@@ -696,3 +698,4 @@ legend.addTo(map);
 
 </body>
 </html>
+
