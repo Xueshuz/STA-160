@@ -161,7 +161,7 @@
     <option value="all">All regions</option>
   </select>
 
-  <!-- 新增：按州筛选 -->
+  <!-- 按州筛选 -->
   <label>State</label>
   <select id="stateSelect">
     <option value="all">All states</option>
@@ -201,7 +201,7 @@ var allFireData = null;
 var currentMetric = "tmmx_c";   // 'tmmx_c' 或 'vpd'
 var currentRegion = "all";
 var currentState  = "all";
-var currentYear = "all";
+var currentYear   = "all";
 var minVal = 0, maxVal = 100;
 
 var histCanvas = document.getElementById("histogram");
@@ -215,6 +215,9 @@ var AUTOZOOM_THRESHOLD = 20;
 var REGION_LABEL_MAP = {
   "South": "Central East"
 };
+
+// 自动识别 state 字段名
+var stateFieldKey = null;
 
 function setLoading(isLoading) {
   loadingOverlay.classList.toggle("hidden", !isLoading);
@@ -282,12 +285,14 @@ fireLayer = L.geoJSON(null, {
   },
   onEachFeature: function (feature, layer) {
     var p = feature.properties;
-    // 弹窗里 Region 也用映射后的名字
     var regionLabel = REGION_LABEL_MAP[p.region] || p.region;
+
+    var stateVal = stateFieldKey ? (p[stateFieldKey] || "N/A") : (p.state || "N/A");
+
     layer.bindPopup(
       "<b>Date:</b> " + p.date +
       "<br><b>Region:</b> " + regionLabel +
-      "<br><b>State:</b> " + (p.state || "N/A") +
+      "<br><b>State:</b> " + stateVal +
       "<br><b>Season:</b> " + p.season +
       "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
       "<br><b>VPD:</b> " + p.vpd
@@ -303,17 +308,19 @@ fetch("fires_full.geojson")
   .then(data => {
     allFireData = data;
 
+    // 自动检测 state 字段名
+    detectStateField();
+
     // 从 date 解析出 year
     allFireData.features.forEach(function(f) {
       var d = String(f.properties.date || "");
       f.properties.year = d.slice(0, 4);
     });
 
-    // 构建 year 下拉菜单
+    // Year 下拉
     var years = Array.from(new Set(
       allFireData.features.map(f => f.properties.year)
     )).sort();
-
     var yearSelect = document.getElementById("yearFilter");
     years.forEach(function(y) {
       if (!y) return;
@@ -323,33 +330,36 @@ fetch("fires_full.geojson")
       yearSelect.appendChild(opt);
     });
 
-    // 构建 region 下拉菜单（文字用映射）
+    // Region 下拉（显示用映射）
     var regions = Array.from(new Set(
       allFireData.features.map(f => f.properties.region)
     ));
     var regionSelect = document.getElementById("regionSelect");
-    regions.forEach(function(r) {
-      if (!r) return;
+    regions.forEach(function(rg) {
+      if (!rg) return;
       var opt = document.createElement("option");
-      opt.value = r;  // 内部值仍然是原始 region
-      opt.textContent = REGION_LABEL_MAP[r] || r;
+      opt.value = rg;
+      opt.textContent = REGION_LABEL_MAP[rg] || rg;
       regionSelect.appendChild(opt);
     });
 
-    // 构建 state 下拉菜单
-    var states = Array.from(new Set(
-      allFireData.features.map(f => f.properties.state)
-    ));
+    // State 下拉（用检测出来的字段）
     var stateSelect = document.getElementById("stateSelect");
-    states.forEach(function(s) {
-      if (!s) return;
-      var opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = s;
-      stateSelect.appendChild(opt);
-    });
+    if (stateFieldKey) {
+      var states = Array.from(new Set(
+        allFireData.features.map(f => f.properties[stateFieldKey])
+      )).filter(Boolean).sort();
+      states.forEach(function(st) {
+        var opt = document.createElement("option");
+        opt.value = st;
+        opt.textContent = st;
+        stateSelect.appendChild(opt);
+      });
+    } else {
+      console.warn("No state field detected in fires_full.geojson; state filter will stay at 'All states' only.");
+    }
 
-    // 初始化 slider 范围 + 首次画图
+    // 初始化 slider + 绘图
     initializeMetricRange();
     applyFilters();
 
@@ -360,6 +370,32 @@ fetch("fires_full.geojson")
     setLoading(false);
   });
 
+// 检测 state 字段名
+function detectStateField() {
+  if (!allFireData || !allFireData.features.length) return;
+
+  var props = allFireData.features[0].properties || {};
+  var candidates = [
+    "state", "State", "STATE",
+    "state_name", "STATE_NAME",
+    "st", "ST", "St",
+    "STUSPS"
+  ];
+
+  for (var i = 0; i < candidates.length; i++) {
+    if (Object.prototype.hasOwnProperty.call(props, candidates[i])) {
+      stateFieldKey = candidates[i];
+      break;
+    }
+  }
+
+  if (!stateFieldKey) {
+    console.warn("Could not detect a state field from candidates in fires_full.geojson.");
+  } else {
+    console.log("Detected state field:", stateFieldKey);
+  }
+}
+
 // ======================== 更新 range 文本 ========================
 function updateRangeLabel() {
   var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "VPD";
@@ -367,20 +403,23 @@ function updateRangeLabel() {
     name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
 }
 
-// 按当前 Year + Region + State + Metric 重新算 slider 的 min/max
+// 计算当前组合下的 metric 范围
 function initializeMetricRange() {
   if (!allFireData) return;
 
   var metric = currentMetric;
   var year   = document.getElementById("yearFilter").value;
   var region = document.getElementById("regionSelect").value;
-  var state  = document.getElementById("stateSelect").value;
+  var stateSel  = document.getElementById("stateSelect").value;
 
   var subset = allFireData.features.filter(function(f) {
     var p = f.properties;
-    if (year !== "all" && p.year !== year) return false;
+
+    var fState = stateFieldKey ? p[stateFieldKey] : p.state;
+
+    if (year   !== "all" && p.year   !== year)   return false;
     if (region !== "all" && p.region !== region) return false;
-    if (state !== "all" && p.state !== state) return false;
+    if (stateSel !== "all" && fState !== stateSel) return false;
     return true;
   });
 
@@ -389,7 +428,6 @@ function initializeMetricRange() {
     .filter(function(v) { return !isNaN(v); });
 
   if (!values.length) {
-    // 如果这个组合没数据，就用全局的范围
     values = allFireData.features
       .map(function(f) { return parseFloat(f.properties[metric]); })
       .filter(function(v) { return !isNaN(v); });
@@ -433,10 +471,11 @@ function applyFilters() {
     type: "FeatureCollection",
     features: allFireData.features.filter(function(f) {
       var p = f.properties;
+      var stateVal = stateFieldKey ? p[stateFieldKey] : p.state;
 
       if (selectedYear   !== "all" && p.year   !== selectedYear)   return false;
       if (selectedRegion !== "all" && p.region !== selectedRegion) return false;
-      if (selectedState  !== "all" && p.state  !== selectedState)  return false;
+      if (selectedState  !== "all" && stateVal !== selectedState)  return false;
 
       var val = parseFloat(p[currentMetric]);
       if (isNaN(val)) return false;
@@ -446,7 +485,6 @@ function applyFilters() {
     })
   };
 
-  // “没有数据” 提示
   var noDataMsg = document.getElementById("noDataMsg");
   if (filtered.features.length === 0) {
     noDataMsg.style.display = "block";
@@ -461,7 +499,7 @@ function applyFilters() {
   updateHistogram(filtered);
 }
 
-// 自动 zoom 到当前点（点太少就不 zoom）
+// 自动 zoom（点太少就不 zoom）
 function autoZoom(filtered) {
   var n = filtered.features.length;
 
@@ -471,7 +509,6 @@ function autoZoom(filtered) {
   }
 
   if (n < AUTOZOOM_THRESHOLD) {
-    // 点很少，就不动视角
     return;
   }
 
@@ -489,7 +526,7 @@ function autoZoom(filtered) {
   map.fitBounds(bounds.pad(0.2));
 }
 
-// 简单 histogram，小条形图
+// histogram
 function updateHistogram(filtered) {
   var features = (filtered && filtered.features.length)
     ? filtered.features
@@ -587,7 +624,7 @@ document.getElementById("resetBtn").addEventListener("click", function () {
   currentMetric = "tmmx_c";
   currentRegion = "all";
   currentState  = "all";
-  currentYear = "all";
+  currentYear   = "all";
 
   initializeMetricRange();
   applyFilters();
