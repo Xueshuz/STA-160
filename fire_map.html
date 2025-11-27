@@ -156,15 +156,15 @@
     <option value="vpd">Vapor Pressure Deficit (VPD)</option>
   </select>
 
+  <label>Region</label>
+  <select id="regionSelect">
+    <option value="all">All regions</option>
+  </select>
+
   <!-- 新增：按州筛选 -->
   <label>State</label>
   <select id="stateSelect">
     <option value="all">All states</option>
-  </select>
-
-  <label>Region</label>
-  <select id="regionSelect">
-    <option value="all">All regions</option>
   </select>
 
   <label>Value range</label>
@@ -201,15 +201,20 @@ var allFireData = null;
 var currentMetric = "tmmx_c";   // 'tmmx_c' 或 'vpd'
 var currentRegion = "all";
 var currentState  = "all";
-var currentYear   = "all";
+var currentYear = "all";
 var minVal = 0, maxVal = 100;
 
 var histCanvas = document.getElementById("histogram");
 var histCtx = histCanvas.getContext("2d");
 var loadingOverlay = document.getElementById("loadingOverlay");
 
-// 小于这个数量就不自动 zoom
+// 点数阈值：少于这个数就不自动 zoom
 var AUTOZOOM_THRESHOLD = 20;
+
+// Region 显示名映射（内部值不变）
+var REGION_LABEL_MAP = {
+  "South": "Central East"
+};
 
 function setLoading(isLoading) {
   loadingOverlay.classList.toggle("hidden", !isLoading);
@@ -277,10 +282,12 @@ fireLayer = L.geoJSON(null, {
   },
   onEachFeature: function (feature, layer) {
     var p = feature.properties;
+    // 弹窗里 Region 也用映射后的名字
+    var regionLabel = REGION_LABEL_MAP[p.region] || p.region;
     layer.bindPopup(
       "<b>Date:</b> " + p.date +
+      "<br><b>Region:</b> " + regionLabel +
       "<br><b>State:</b> " + (p.state || "N/A") +
-      "<br><b>Region:</b> " + p.region +
       "<br><b>Season:</b> " + p.season +
       "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
       "<br><b>VPD:</b> " + p.vpd
@@ -296,13 +303,6 @@ fetch("fires_full.geojson")
   .then(data => {
     allFireData = data;
 
-    // 如果还没改 geojson，这里强制把 "South" 重命名为 "Central East"
-    allFireData.features.forEach(function(f) {
-      if (f.properties.region === "South") {
-        f.properties.region = "Central East";
-      }
-    });
-
     // 从 date 解析出 year
     allFireData.features.forEach(function(f) {
       var d = String(f.properties.date || "");
@@ -316,34 +316,37 @@ fetch("fires_full.geojson")
 
     var yearSelect = document.getElementById("yearFilter");
     years.forEach(function(y) {
+      if (!y) return;
       var opt = document.createElement("option");
       opt.value = y;
       opt.textContent = y;
       yearSelect.appendChild(opt);
     });
 
+    // 构建 region 下拉菜单（文字用映射）
+    var regions = Array.from(new Set(
+      allFireData.features.map(f => f.properties.region)
+    ));
+    var regionSelect = document.getElementById("regionSelect");
+    regions.forEach(function(r) {
+      if (!r) return;
+      var opt = document.createElement("option");
+      opt.value = r;  // 内部值仍然是原始 region
+      opt.textContent = REGION_LABEL_MAP[r] || r;
+      regionSelect.appendChild(opt);
+    });
+
     // 构建 state 下拉菜单
     var states = Array.from(new Set(
       allFireData.features.map(f => f.properties.state)
-    )).filter(Boolean).sort();
+    ));
     var stateSelect = document.getElementById("stateSelect");
     states.forEach(function(s) {
+      if (!s) return;
       var opt = document.createElement("option");
       opt.value = s;
       opt.textContent = s;
       stateSelect.appendChild(opt);
-    });
-
-    // 构建 region 下拉菜单
-    var regions = Array.from(new Set(
-      allFireData.features.map(f => f.properties.region)
-    )).filter(Boolean).sort();
-    var regionSelect = document.getElementById("regionSelect");
-    regions.forEach(function(rg) {
-      var opt = document.createElement("option");
-      opt.value = rg;
-      opt.textContent = rg;
-      regionSelect.appendChild(opt);
     });
 
     // 初始化 slider 范围 + 首次画图
@@ -364,7 +367,7 @@ function updateRangeLabel() {
     name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
 }
 
-// 按当前 Year + State + Region + Metric 重新算 slider 的 min/max
+// 按当前 Year + Region + State + Metric 重新算 slider 的 min/max
 function initializeMetricRange() {
   if (!allFireData) return;
 
@@ -375,9 +378,9 @@ function initializeMetricRange() {
 
   var subset = allFireData.features.filter(function(f) {
     var p = f.properties;
-    if (year   !== "all" && p.year   !== year)   return false;
-    if (state  !== "all" && p.state  !== state)  return false;
+    if (year !== "all" && p.year !== year) return false;
     if (region !== "all" && p.region !== region) return false;
+    if (state !== "all" && p.state !== state) return false;
     return true;
   });
 
@@ -432,8 +435,8 @@ function applyFilters() {
       var p = f.properties;
 
       if (selectedYear   !== "all" && p.year   !== selectedYear)   return false;
-      if (selectedState  !== "all" && p.state  !== selectedState)  return false;
       if (selectedRegion !== "all" && p.region !== selectedRegion) return false;
+      if (selectedState  !== "all" && p.state  !== selectedState)  return false;
 
       var val = parseFloat(p[currentMetric]);
       if (isNaN(val)) return false;
@@ -458,17 +461,17 @@ function applyFilters() {
   updateHistogram(filtered);
 }
 
-// 自动 zoom 到当前点（数量太少就不 zoom）
+// 自动 zoom 到当前点（点太少就不 zoom）
 function autoZoom(filtered) {
-  var featureCount = filtered.features.length;
+  var n = filtered.features.length;
 
-  if (!featureCount) {
+  if (!n) {
     map.setView([39.5, -98.35], 4);
     return;
   }
 
-  // 点少的时候不自动缩放
-  if (featureCount < AUTOZOOM_THRESHOLD) {
+  if (n < AUTOZOOM_THRESHOLD) {
+    // 点很少，就不动视角
     return;
   }
 
@@ -478,12 +481,10 @@ function autoZoom(filtered) {
     var c = f.geometry.coordinates;
     coords.push([c[1], c[0]]);
   });
-
   if (!coords.length) {
     map.setView([39.5, -98.35], 4);
     return;
   }
-
   var bounds = L.latLngBounds(coords);
   map.fitBounds(bounds.pad(0.2));
 }
@@ -578,15 +579,15 @@ document.getElementById("maxRange").addEventListener("input", function () {
 });
 
 document.getElementById("resetBtn").addEventListener("click", function () {
-  document.getElementById("yearFilter").value   = "all";
+  document.getElementById("yearFilter").value = "all";
   document.getElementById("regionSelect").value = "all";
-  document.getElementById("stateSelect").value  = "all";
+  document.getElementById("stateSelect").value = "all";
   document.getElementById("metricSelect").value = "tmmx_c";
 
   currentMetric = "tmmx_c";
   currentRegion = "all";
   currentState  = "all";
-  currentYear   = "all";
+  currentYear = "all";
 
   initializeMetricRange();
   applyFilters();
