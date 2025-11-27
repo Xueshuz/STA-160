@@ -344,20 +344,20 @@ fetch("fires_full.geojson")
     });
 
     // State 下拉（用检测出来的字段）
+    var states = Array.from(new Set(
+      allFireData.features.map(f => f.properties.state)
+    )).filter(Boolean).sort();
     var stateSelect = document.getElementById("stateSelect");
-    if (stateFieldKey) {
-      var states = Array.from(new Set(
-        allFireData.features.map(f => f.properties[stateFieldKey])
-      )).filter(Boolean).sort();
-      states.forEach(function(st) {
-        var opt = document.createElement("option");
-        opt.value = st;
-        opt.textContent = st;
-        stateSelect.appendChild(opt);
-      });
-    } else {
-      console.warn("No state field detected in fires_full.geojson; state filter will stay at 'All states' only.");
-    }
+    states.forEach(function(s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      stateSelect.appendChild(opt);
+    });
+    
+    // 过滤时：
+    if (selectedState !== "all" && p.state !== selectedState) return false;
+
 
     // 初始化 slider + 绘图
     initializeMetricRange();
