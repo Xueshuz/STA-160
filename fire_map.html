@@ -145,7 +145,6 @@
 
 <!-- 年份选择 -->
 <select id="yearFilter">
-  <option value="all">All Years</option>
 </select>
 
 <!-- 左侧过滤面板 -->
@@ -202,7 +201,7 @@ var allFireData = null;
 var currentMetric = "tmmx_c";   // 'tmmx_c' 或 'vpd'
 var currentRegion = "all";
 var currentState  = "all";
-var currentYear   = "all";
+var currentYear   = "2014";
 var minVal = 0, maxVal = 100;
 
 var histCanvas = document.getElementById("histogram");
@@ -320,17 +319,25 @@ fetch("fires_full.geojson")
     });
 
     // Year 下拉
-    var years = Array.from(new Set(
-      allFireData.features.map(f => f.properties.year)
-    )).sort();
-    var yearSelect = document.getElementById("yearFilter");
-    years.forEach(function(y) {
-      if (!y) return;
-      var opt = document.createElement("option");
-      opt.value = y;
-      opt.textContent = y;
-      yearSelect.appendChild(opt);
-    });
+    
+  var years = Array.from(new Set(
+    allFireData.features.map(f => f.properties.year)
+  )).sort();   // 如果 year 是数字，写 .sort((a,b) => a - b)
+  
+  var yearSelect = document.getElementById("yearFilter");
+  years.forEach(function(y) {
+    if (!y) return;
+    var opt = document.createElement("option");
+    opt.value = y;
+    opt.textContent = y;
+    yearSelect.appendChild(opt);
+  });
+
+// 默认选中最小的一年（你的数据里就是 2014）
+if (years.length) {
+  yearSelect.value = years[0];   // 等价于 "2014"
+}
+
 
     // Region 下拉（显示用映射）
     var regions = Array.from(new Set(
@@ -419,7 +426,7 @@ function initializeMetricRange() {
 
     var fState = stateFieldKey ? p[stateFieldKey] : p.state;
 
-    if (year   !== "all" && p.year   !== year)   return false;
+    if (year && p.year !== year) return false;
     if (region !== "all" && p.region !== region) return false;
     if (stateSel !== "all" && fState !== stateSel) return false;
     return true;
