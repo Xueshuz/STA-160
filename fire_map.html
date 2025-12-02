@@ -153,7 +153,8 @@
   <label>Metric</label>
   <select id="metricSelect">
     <option value="tmmx_c">Max Temp (°C)</option>
-    <option value="vpd">Vapor Pressure Deficit (VPD)</option>
+    <option value="fm1000">FM1000 (%)</option>
+    <option value="srad">Solar Radiation (SRAD)</option>
   </select>
 
   <label>Region</label>
@@ -198,7 +199,7 @@
 var map, fireLayer, riskLayer;
 var allFireData = null;
 
-var currentMetric = "tmmx_c";   // 'tmmx_c' 或 'vpd'
+var currentMetric = "tmmx_c";   
 var currentRegion = "all";
 var currentState  = "all";
 var currentYear   = "all";
@@ -295,7 +296,8 @@ fireLayer = L.geoJSON(null, {
       "<br><b>State:</b> " + stateVal +
       "<br><b>Season:</b> " + p.season +
       "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
-      "<br><b>VPD:</b> " + p.vpd
+      "<br><b>FM1000:</b> " + p.fm1000 +
+      "<br><b>Solar Radiation:</b> " + p.sard
     );
   }
 });
@@ -398,7 +400,7 @@ function detectStateField() {
 
 // ======================== 更新 range 文本 ========================
 function updateRangeLabel() {
-  var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "VPD";
+  var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "Solar Radiation";
   document.getElementById("rangeText").textContent =
     name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
 }
