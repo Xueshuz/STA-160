@@ -21,34 +21,34 @@
       height: 100%;
     }
 
-    /* Year Dropdown（不遮住 +/− 按钮） */
+    /* Year Dropdown*/
     #yearFilter {
-      position: absolute !important;
-      top: 20px !important;
-      left: 70px !important;
+      position: absolute ;
+      top: 20px ;
+      left: 70px ;
 
-      width: 140px !important;
-      max-width: 140px !important;
-      min-width: 140px !important;
+      width: 140px ;
+      max-width: 140px ;
+      min-width: 140px ;
 
-      display: inline-block !important;
-      box-sizing: border-box !important;
+      display: inline-block ;
+      box-sizing: border-box ;
 
-      z-index: 999999 !important;
+      z-index: 999999 ;
 
-      padding: 5px 10px !important;
-      background: white !important;
-      border: 2px solid #333 !important;
-      border-radius: 6px !important;
-      box-shadow: 0 0 4px rgba(0,0,0,0.3) !important;
+      padding: 5px 10px ;
+      background: white ;
+      border: 2px solid #333 ;
+      border-radius: 6px ;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3) ;
     }
 
-    /* 左侧过滤面板 */
+    /* filter bar */
     #filterBar {
       position: absolute;
       top: 80px;
       left: 20px;
-      width: 280px;
+      width: 200px;
       background: white;
       padding: 15px;
       z-index: 9999;
@@ -177,20 +177,11 @@
 
   <button id="resetBtn" type="button">Reset filters</button>
 
- <div id="histContainer">
+  <div id="histContainer">
     <label style="margin-top:8px;">Distribution</label>
-
-    <div class="hist-inner">
-        <div class="hist-y-label">Count</div>
-
-        <div class="hist-canvas-wrapper">
-            <canvas id="histogram" width="240" height="80"></canvas>
-        </div>
-      
-        <div class="hist-x-label">Metric value (binned)</div>
-    </div>
+    <canvas id="histogram" width="240" height="80"></canvas>
+  </div>
 </div>
-
 
 <!-- Loading -->
 <div id="loadingOverlay" class="loading-overlay">
@@ -208,10 +199,10 @@
 var map, fireLayer, riskLayer;
 var allFireData = null;
 
-var currentMetric = "tmmx_c";   
+var currentMetric = "tmmx_c";   // 'tmmx_c' 或 'vpd'
 var currentRegion = "all";
 var currentState  = "all";
-var currentYear   = "2014";
+var currentYear   = "all";
 var minVal = 0, maxVal = 100;
 
 var histCanvas = document.getElementById("histogram");
@@ -409,16 +400,9 @@ function detectStateField() {
 
 // ======================== 更新 range 文本 ========================
 function updateRangeLabel() {
-    var labelMap = {
-        "tmmx_c": "Max Temp (°C)",
-        "fm1000": "FM1000 (%)",          
-        "srad": "Solar Radiation"     
-    };
-
-    var name = labelMap[currentMetric] || currentMetric;
-
-    document.getElementById("rangeText").textContent =
-        name + ": " + minVal.toFixed(1) + " - " + maxVal.toFixed(1);
+  var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "Solar Radiation";
+  document.getElementById("rangeText").textContent =
+    name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
 }
 
 // 计算当前组合下的 metric 范围
@@ -634,7 +618,7 @@ document.getElementById("maxRange").addEventListener("input", function () {
 });
 
 document.getElementById("resetBtn").addEventListener("click", function () {
-  document.getElementById("yearFilter").value = "2014";
+  document.getElementById("yearFilter").value = "all";
   document.getElementById("regionSelect").value = "all";
   document.getElementById("stateSelect").value = "all";
   document.getElementById("metricSelect").value = "tmmx_c";
@@ -642,7 +626,7 @@ document.getElementById("resetBtn").addEventListener("click", function () {
   currentMetric = "tmmx_c";
   currentRegion = "all";
   currentState  = "all";
-  currentYear   = "2014";
+  currentYear   = "all";
 
   initializeMetricRange();
   applyFilters();
