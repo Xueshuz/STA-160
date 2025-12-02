@@ -202,7 +202,7 @@ var allFireData = null;
 var currentMetric = "tmmx_c";   
 var currentRegion = "all";
 var currentState  = "all";
-var currentYear   = "all";
+var currentYear   = "2014";
 var minVal = 0, maxVal = 100;
 
 var histCanvas = document.getElementById("histogram");
@@ -297,7 +297,7 @@ fireLayer = L.geoJSON(null, {
       "<br><b>Season:</b> " + p.season +
       "<br><b>Max Temp (°C):</b> " + p.tmmx_c +
       "<br><b>FM1000:</b> " + p.fm1000 +
-      "<br><b>Solar Radiation:</b> " + p.sard
+      "<br><b>Solar Radiation:</b> " + p.srad
     );
   }
 });
@@ -400,9 +400,16 @@ function detectStateField() {
 
 // ======================== 更新 range 文本 ========================
 function updateRangeLabel() {
-  var name = (currentMetric === "tmmx_c") ? "Max Temp (°C)" : "Solar Radiation";
-  document.getElementById("rangeText").textContent =
-    name + ": " + minVal.toFixed(1) + " – " + maxVal.toFixed(1);
+    var labelMap = {
+        "tmmx_c": "Max Temp (°C)",
+        "fm1000": "FM1000 (%)",          
+        "srad": "Solar Radiation"     
+    };
+
+    var name = labelMap[currentMetric] || currentMetric;
+
+    document.getElementById("rangeText").textContent =
+        name + ": " + minVal.toFixed(1) + " - " + maxVal.toFixed(1);
 }
 
 // 计算当前组合下的 metric 范围
@@ -618,7 +625,7 @@ document.getElementById("maxRange").addEventListener("input", function () {
 });
 
 document.getElementById("resetBtn").addEventListener("click", function () {
-  document.getElementById("yearFilter").value = "all";
+  document.getElementById("yearFilter").value = "2014";
   document.getElementById("regionSelect").value = "all";
   document.getElementById("stateSelect").value = "all";
   document.getElementById("metricSelect").value = "tmmx_c";
@@ -626,7 +633,7 @@ document.getElementById("resetBtn").addEventListener("click", function () {
   currentMetric = "tmmx_c";
   currentRegion = "all";
   currentState  = "all";
-  currentYear   = "all";
+  currentYear   = "2014";
 
   initializeMetricRange();
   applyFilters();
