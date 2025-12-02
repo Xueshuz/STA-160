@@ -177,11 +177,20 @@
 
   <button id="resetBtn" type="button">Reset filters</button>
 
-  <div id="histContainer">
+ <div id="histContainer">
     <label style="margin-top:8px;">Distribution</label>
-    <canvas id="histogram" width="240" height="80"></canvas>
-  </div>
+
+    <div class="hist-inner">
+        <div class="hist-y-label">Count</div>
+
+        <div class="hist-canvas-wrapper">
+            <canvas id="histogram" width="240" height="80"></canvas>
+        </div>
+      
+        <div class="hist-x-label">Metric value (binned)</div>
+    </div>
 </div>
+
 
 <!-- Loading -->
 <div id="loadingOverlay" class="loading-overlay">
