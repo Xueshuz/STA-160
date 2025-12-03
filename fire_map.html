@@ -545,20 +545,23 @@ function updateHistogram(filtered) {
   if (!features.length) return;
 
   var values = features
-    .map(function(f) { return parseFloat(f.properties[currentMetric]); })
-    .filter(function(v) { return !isNaN(v); });
+    .map(f => parseFloat(f.properties[currentMetric]))
+    .filter(v => !isNaN(v));
 
   if (!values.length) return;
 
-  var minV = Math.min.apply(null, values);
-  var maxV = Math.max.apply(null, values);
-  if (minV === maxV) maxV = minV + 1;
+  // ------------ 数据统计 ------------
+  var minV = Math.min(...values);
+  var maxV = Math.max(...values);
+
+  // 避免显示超级极端的温度，例如 -27°C，改为从 0 开始更美观
+  if (currentMetric === "tmmx_c") minV = Math.max(0, minV);
 
   var bins = 10;
-  var counts = new Array(bins).fill(0);
-  var step = (maxV - minV) / bins;
+  var counts = Array(bins).fill(0);
+  var step = (maxV - minV) / bins || 1;
 
-  values.forEach(function(v) {
+  values.forEach(v => {
     var idx = Math.floor((v - minV) / step);
     if (idx < 0) idx = 0;
     if (idx >= bins) idx = bins - 1;
@@ -568,78 +571,81 @@ function updateHistogram(filtered) {
   var w = histCanvas.width;
   var h = histCanvas.height;
 
-  // ---- 预留画图区域的边距 ----
-  var paddingLeft = 30;
-  var paddingRight = 5;
-  var paddingTop = 5;
-  var paddingBottom = 25;
+  // ------------ 美观布局 ------------
+  var padL = 28;
+  var padR = 8;
+  var padT = 8;
+  var padB = 28;
 
-  var plotWidth = w - paddingLeft - paddingRight;
-  var plotHeight = h - paddingTop - paddingBottom;
+  var plotW = w - padL - padR;
+  var plotH = h - padT - padB;
 
-  var maxCount = Math.max.apply(null, counts) || 1;
-  var barW = plotWidth / bins;
+  var maxCount = Math.max(...counts) || 1;
+  var barW = plotW / bins;
 
-  // ---- 先画坐标轴 ----
-  histCtx.strokeStyle = "#555";
+  // ------------ 坐标轴（更浅色） ------------
+  histCtx.strokeStyle = "rgba(0,0,0,0.35)";
   histCtx.lineWidth = 1;
 
   // x 轴
   histCtx.beginPath();
-  histCtx.moveTo(paddingLeft, h - paddingBottom);
-  histCtx.lineTo(w - paddingRight, h - paddingBottom);
+  histCtx.moveTo(padL, h - padB);
+  histCtx.lineTo(w - padR, h - padB);
   histCtx.stroke();
 
   // y 轴
   histCtx.beginPath();
-  histCtx.moveTo(paddingLeft, paddingTop);
-  histCtx.lineTo(paddingLeft, h - paddingBottom);
+  histCtx.moveTo(padL, padT);
+  histCtx.lineTo(padL, h - padB);
   histCtx.stroke();
 
-  // ---- 画柱子 ----
+  // ------------ 柱子 ------------
   histCtx.fillStyle = "#0f7b88";
-  counts.forEach(function(c, i) {
-    var barH = (c / maxCount) * plotHeight;
-    var x = paddingLeft + i * barW + 1;
-    var y = h - paddingBottom - barH;
+  counts.forEach((c, i) => {
+    var barH = (c / maxCount) * plotH;
+    var x = padL + i * barW + 1;
+    var y = h - padB - barH;
     histCtx.fillRect(x, y, barW - 2, barH);
   });
 
-  // ---- 文字和刻度 ----
+  // ------------ 文字（更现代） ------------
   histCtx.fillStyle = "#333";
   histCtx.font = "10px Arial";
 
-  // y 轴刻度（只标最大值，简单一点）
+  // y 轴刻度：只显示 maxCount
   histCtx.textAlign = "right";
-  histCtx.textBaseline = "top";
-  histCtx.fillText(maxCount.toString(), paddingLeft - 2, paddingTop);
+  histCtx.textBaseline = "middle";
+  histCtx.fillText(maxCount.toString(), padL - 4, padT + 2);
 
-  // y 轴标签：Count
+  // x 轴刻度：左、中、右
+  var mid = (minV + maxV) / 2;
+
+  histCtx.textAlign = "center";
+  histCtx.textBaseline = "top";
+  var labelY = h - padB + 4;
+
+  histCtx.fillText(minV.toFixed(1), padL, labelY);
+  histCtx.fillText(mid.toFixed(1), padL + plotW / 2, labelY);
+  histCtx.fillText(maxV.toFixed(1), padL + plotW, labelY);
+
+  // x 轴名字
+  var metricLabel =
+    currentMetric === "tmmx_c" ? "Max Temp (°C)" :
+    currentMetric === "fm1000" ? "FM1000 (%)" :
+    "Solar Radiation";
+
+  histCtx.fillText(metricLabel, padL + plotW / 2, h - 10);
+
+  // y 轴名字（更轻字体）
   histCtx.save();
-  histCtx.translate(10, paddingTop + plotHeight / 2);
+  histCtx.translate(12, padT + plotH / 2);
   histCtx.rotate(-Math.PI / 2);
   histCtx.textAlign = "center";
   histCtx.textBaseline = "middle";
   histCtx.fillText("Count", 0, 0);
   histCtx.restore();
-
-  // x 轴刻度：min / mid / max
-  var midV = (minV + maxV) / 2;
-  histCtx.textAlign = "center";
-  histCtx.textBaseline = "top";
-  var xAxisY = h - paddingBottom + 4;
-  histCtx.fillText(minV.toFixed(1), paddingLeft, xAxisY);
-  histCtx.fillText(midV.toFixed(1), paddingLeft + plotWidth / 2, xAxisY);
-  histCtx.fillText(maxV.toFixed(1), paddingLeft + plotWidth, xAxisY);
-
-  // x 轴标签：根据当前 metric 换名字
-  var metricName = "Value";
-  if (currentMetric === "tmmx_c") metricName = "Max Temp (°C)";
-  else if (currentMetric === "fm1000") metricName = "FM1000 (%)";
-  else if (currentMetric === "srad") metricName = "SRAD";
-
-  histCtx.fillText(metricName, paddingLeft + plotWidth / 2, h - 10);
 }
+
 
 
 // ======================== 事件监听 ========================
